@@ -18,6 +18,8 @@ pub struct File {
 #[derive(Debug)]
 pub enum FileError {
     Io,
+    BaseDirNotExists,
+    UsernamesJsonNotExists,
     UsernameExists,
     UsernameNotExists,
     UsernameDirNotExists,
@@ -87,6 +89,8 @@ impl fmt::Display for FileError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             FileError::Io => write!(f, "No such file or directory."),
+            FileError::BaseDirNotExists => write!(f, "Base data directory not exists. All data lost."),
+            FileError::UsernamesJsonNotExists => write!(f, "The file `usernames.json` is lost"),
             FileError::UsernameExists => write!(f, "User name already exists and cannot be created again."),
             FileError::UsernameNotExists => {
                 write!(f, "Specified user name not exists. Please create this username first.")
@@ -108,7 +112,7 @@ impl File {
         // determine file base path
         let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
 
-        // check if the base data path exists
+        // create base data folder if not exists
         if !Path::new(base_path).exists() {
             fs::create_dir_all(base_path)?;
         }
@@ -169,22 +173,35 @@ impl File {
         // determine file base path
         let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
 
+        // perform storage check toward base level
+        match File::storage_hierarchy_check(base_path, None, None, None) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
+        }
+
         // read and parse `usernames.json`
         let usernames_json_path = format!("{}/{}", base_path, "usernames.json");
         let usernames_file = fs::File::open(&usernames_json_path)?;
         let usernames_json: UsernamesJson = serde_json::from_reader(usernames_file)?;
 
         // create a vector of usernames
-        let mut usernames = Vec::new();
-        for username_info in &usernames_json.usernames {
-            usernames.push(username_info.name.clone());
-        }
+        let usernames = usernames_json
+            .usernames
+            .iter()
+            .map(|username_info| username_info.name.clone())
+            .collect::<Vec<String>>();
         Ok(usernames)
     }
 
     pub fn remove_username(username: &str, file_base_path: Option<&str>) -> Result<(), FileError> {
         // determine file base path
         let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
+
+        // perform storage check toward base level
+        match File::storage_hierarchy_check(base_path, None, None, None) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
+        }
 
         // read and parse `usernames.json`
         let usernames_json_path = format!("{}/{}", base_path, "usernames.json");
@@ -222,25 +239,14 @@ impl File {
         // determine file base path
         let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
 
-        // check if username exists
-        let usernames = File::get_usernames(file_base_path)?;
-        if !usernames.contains(&username.to_string()) {
-            return Err(FileError::UsernameNotExists);
-        }
-
-        // check if username directory exists
-        let username_path = format!("{}/{}", base_path, username);
-        if !Path::new(&username_path).exists() {
-            return Err(FileError::UsernameDirNotExists);
-        }
-
-        // check if `dbs.json` exists
-        let dbs_json_path = format!("{}/{}", username_path, "dbs.json");
-        if !Path::new(&dbs_json_path).exists() {
-            return Err(FileError::DbsJsonNotExists);
+        // perform storage check toward username level
+        match File::storage_hierarchy_check(base_path, Some(username), None, None) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
         }
 
         // load current dbs from `dbs.json`
+        let dbs_json_path = format!("{}/{}/{}", base_path, username, "dbs.json");
         let dbs_file = fs::File::open(&dbs_json_path)?;
         let mut dbs_json: DbsJson = serde_json::from_reader(dbs_file)?;
 
@@ -265,7 +271,7 @@ impl File {
         dbs_file.write_all(serde_json::to_string_pretty(&dbs_json)?.as_bytes())?;
 
         // create corresponding directory for the db
-        let db_path = format!("{}/{}", username_path, db_name);
+        let db_path = format!("{}/{}/{}", base_path, username, db_name);
         fs::create_dir_all(&db_path)?;
 
         // create corresponding `tables.json` for the new db
@@ -286,33 +292,23 @@ impl File {
         // determine file base path
         let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
 
-        // check if username exists
-        let usernames = File::get_usernames(file_base_path)?;
-        if !usernames.contains(&username.to_string()) {
-            return Err(FileError::UsernameNotExists);
-        }
-
-        // check if username directory exists
-        let username_path = format!("{}/{}", base_path, username);
-        if !Path::new(&username_path).exists() {
-            return Err(FileError::UsernameDirNotExists);
-        }
-
-        // check if `dbs.json` exists
-        let dbs_json_path = format!("{}/{}", username_path, "dbs.json");
-        if !Path::new(&dbs_json_path).exists() {
-            return Err(FileError::DbsJsonNotExists);
+        // perform storage check toward username level
+        match File::storage_hierarchy_check(base_path, Some(username), None, None) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
         }
 
         // read and parse `dbs.json`
+        let dbs_json_path = format!("{}/{}/{}", base_path, username, "dbs.json");
         let dbs_file = fs::File::open(&dbs_json_path)?;
         let dbs_json: DbsJson = serde_json::from_reader(dbs_file)?;
 
         // create a vector of dbs
-        let mut dbs = Vec::new();
-        for dbs_info in &dbs_json.dbs {
-            dbs.push(dbs_info.name.clone());
-        }
+        let dbs = dbs_json
+            .dbs
+            .iter()
+            .map(|db_info| db_info.name.clone())
+            .collect::<Vec<String>>();
         Ok(dbs)
     }
 
@@ -320,25 +316,14 @@ impl File {
         // determine file base path
         let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
 
-        // check if username exists
-        let usernames = File::get_usernames(file_base_path)?;
-        if !usernames.contains(&username.to_string()) {
-            return Err(FileError::UsernameNotExists);
-        }
-
-        // check if username directory exists
-        let username_path = format!("{}/{}", base_path, username);
-        if !Path::new(&username_path).exists() {
-            return Err(FileError::UsernameDirNotExists);
-        }
-
-        // check if `dbs.json` exists
-        let dbs_json_path = format!("{}/{}", username_path, "dbs.json");
-        if !Path::new(&dbs_json_path).exists() {
-            return Err(FileError::DbsJsonNotExists);
+        // perform storage check toward username level
+        match File::storage_hierarchy_check(base_path, Some(username), None, None) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
         }
 
         // load current dbs from `dbs.json`
+        let dbs_json_path = format!("{}/{}/{}", base_path, username, "dbs.json");
         let dbs_file = fs::File::open(&dbs_json_path)?;
         let mut dbs_json: DbsJson = serde_json::from_reader(dbs_file)?;
 
@@ -350,7 +335,7 @@ impl File {
         };
 
         // remove corresponding db directory
-        let db_path = format!("{}/{}", username_path, db_name);
+        let db_path = format!("{}/{}/{}", base_path, username, db_name);
         if Path::new(&db_path).exists() {
             fs::remove_dir_all(&db_path)?;
         }
@@ -375,37 +360,14 @@ impl File {
         // determine file base path
         let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
 
-        // check if username exists
-        let usernames = File::get_usernames(file_base_path)?;
-        if !usernames.contains(&username.to_string()) {
-            return Err(FileError::UsernameNotExists);
-        }
-
-        // check if username directory exists
-        let username_path = format!("{}/{}", base_path, username);
-        if !Path::new(&username_path).exists() {
-            return Err(FileError::UsernameDirNotExists);
-        }
-
-        // check if db exists
-        let dbs = File::get_dbs(username, file_base_path)?;
-        if !dbs.contains(&db_name.to_string()) {
-            return Err(FileError::DbNotExists);
-        }
-
-        // check if db directory exists
-        let db_path = format!("{}/{}", username_path, db_name);
-        if !Path::new(&db_path).exists() {
-            return Err(FileError::DbDirNotExists);
-        }
-
-        // check if `tables.json` exists
-        let tables_json_path = format!("{}/{}", db_path, "tables.json");
-        if !Path::new(&tables_json_path).exists() {
-            return Err(FileError::TablesJsonNotExists);
+        // perform storage check toward db level
+        match File::storage_hierarchy_check(base_path, Some(username), Some(db_name), None) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
         }
 
         // load current tables from `tables.json`
+        let tables_json_path = format!("{}/{}/{}/{}", base_path, username, db_name, "tables.json");
         let tables_file = fs::File::open(&tables_json_path)?;
         let mut tables_json: TablesJson = serde_json::from_reader(tables_file)?;
 
@@ -443,7 +405,7 @@ impl File {
         }
 
         // create corresponding tsv for the table, with the title line
-        let table_tsv_path = format!("{}/{}", db_path, new_table_info.path_tsv);
+        let table_tsv_path = format!("{}/{}/{}/{}", base_path, username, db_name, new_table_info.path_tsv);
         let mut table_tsv_file = fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -465,8 +427,6 @@ impl File {
         Ok(())
     }
 
-    // TODO: load_tables(username: &str, db_name: &str, file_base_path: Option<&str>) -> Result<Vec<TableInfo>, FileError>
-
     // TODO: append_rows(username: &str, db_name: &str, table_name: &str, rows: &Vec<Row>, file_base_path: Option<&str>) -> Result<Vec<u32>, FileError>
 
     // TODO: fetch_rows(username: &str, db_name: &str, table_name: &str, row_id_range: &Vec<u32>, file_base_path: Option<&str>) -> Result<Vec<Row>, FileError>
@@ -474,6 +434,90 @@ impl File {
     // TODO: delete_rows(username: &str, db_name: &str, table_name: &str, row_id_range: &Vec<u32>, file_base_path: Option<&str>) -> Result<(), FileError>
 
     // TODO: modify_row(username: &str, db_name: &str, table_name: &str, row_id: u32, new_row: &Row, file_base_path: Option<&str>) -> Result<(), FileError>
+
+    fn storage_hierarchy_check(
+        base_path: &str,
+        username: Option<&str>,
+        db_name: Option<&str>,
+        table_name: Option<&str>,
+    ) -> Result<(), FileError> {
+        // check if base directory exists
+        if !Path::new(base_path).exists() {
+            return Err(FileError::BaseDirNotExists);
+        }
+
+        // check if `usernames.json` exists
+        let usernames_json_path = format!("{}/{}", base_path, "usernames.json");
+        if !Path::new(&usernames_json_path).exists() {
+            return Err(FileError::UsernamesJsonNotExists);
+        }
+
+        // base level check passed
+        if username == None {
+            return Ok(());
+        }
+
+        // check if username exists
+        let usernames_file = fs::File::open(&usernames_json_path)?;
+        let usernames_json: UsernamesJson = serde_json::from_reader(usernames_file)?;
+        if !usernames_json
+            .usernames
+            .iter()
+            .map(|username_info| username_info.name.clone())
+            .collect::<Vec<String>>()
+            .contains(&username.unwrap().to_string())
+        {
+            return Err(FileError::UsernameNotExists);
+        }
+
+        // check if username directory exists
+        let username_path = format!("{}/{}", base_path, username.unwrap());
+        if !Path::new(&username_path).exists() {
+            return Err(FileError::UsernameDirNotExists);
+        }
+
+        // check if `dbs.json` exists
+        let dbs_json_path = format!("{}/{}", username_path, "dbs.json");
+        if !Path::new(&dbs_json_path).exists() {
+            return Err(FileError::DbsJsonNotExists);
+        }
+
+        // username level check passed
+        if db_name == None {
+            return Ok(());
+        }
+
+        // check if db exists
+        let dbs_file = fs::File::open(&dbs_json_path)?;
+        let dbs_json: DbsJson = serde_json::from_reader(dbs_file)?;
+        if !dbs_json
+            .dbs
+            .iter()
+            .map(|db_info| db_info.name.clone())
+            .collect::<Vec<String>>()
+            .contains(&db_name.unwrap().to_string())
+        {
+            return Err(FileError::DbNotExists);
+        }
+
+        // check if db directory exists
+        let db_path = format!("{}/{}", username_path, db_name.unwrap());
+        if !Path::new(&db_path).exists() {
+            return Err(FileError::DbDirNotExists);
+        }
+
+        // check if `tables.json` exists
+        if !Path::new(&format!("{}/{}", db_path, "tables.json")).exists() {
+            return Err(FileError::TablesJsonNotExists);
+        }
+
+        // db level check passed
+        if table_name == None {
+            return Ok(());
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
