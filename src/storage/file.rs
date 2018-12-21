@@ -454,6 +454,53 @@ impl File {
         Ok(tables_json.tables)
     }
 
+    pub fn drop_table(
+        username: &str,
+        db_name: &str,
+        table_name: &str,
+        file_base_path: Option<&str>,
+    ) -> Result<(), FileError> {
+        // determine file base path
+        let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
+
+        // perform storage check toward table level
+        match File::storage_hierarchy_check(base_path, Some(username), Some(db_name), Some(table_name)) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
+        };
+
+        // load current tables from `tables.json`
+        let tables_json_path = format!("{}/{}/{}/{}", base_path, username, db_name, "tables.json");
+        let tables_file = fs::File::open(&tables_json_path)?;
+        let mut tables_json: TablesJson = serde_json::from_reader(tables_file)?;
+
+        // remove if the table exists; otherwise raise error
+        let idx_to_remove = tables_json
+            .tables
+            .iter()
+            .position(|table_info| &table_info.name == table_name);
+        match idx_to_remove {
+            Some(idx) => tables_json.tables.remove(idx),
+            None => return Err(FileError::TableNotExists),
+        };
+
+        // remove corresponding tsv file
+        let table_tsv_path = format!("{}/{}/{}/{}.tsv", base_path, username, db_name, table_name);
+        if Path::new(&table_tsv_path).exists() {
+            fs::remove_file(&table_tsv_path)?;
+        }
+
+        // overwrite `tables.json`
+        let mut tables_file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tables_json_path)?;
+        tables_file.write_all(serde_json::to_string_pretty(&tables_json)?.as_bytes())?;
+
+        Ok(())
+    }
+
     // TODO: append_rows(username: &str, db_name: &str, table_name: &str, rows: &Vec<Row>, file_base_path: Option<&str>) -> Result<Vec<u32>, FileError>
 
     // TODO: fetch_rows(username: &str, db_name: &str, table_name: &str, row_id_range: &Vec<u32>, file_base_path: Option<&str>) -> Result<Vec<Row>, FileError>
@@ -825,7 +872,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_create_and_load_table() {
+    pub fn test_create_load_drop_table() {
         let file_base_path = "data7";
         if Path::new(file_base_path).exists() {
             fs::remove_dir_all(file_base_path).unwrap();
@@ -978,5 +1025,34 @@ mod tests {
             Ok(_) => {}
             Err(e) => assert_eq!(format!("{}", e), "Table already exists and cannot be created again."),
         };
+
+        File::drop_table("crazyguy", "BookerDB", "Affiliates", Some(file_base_path)).unwrap();
+
+        assert!(!Path::new(&format!(
+            "{}/{}/{}/{}",
+            file_base_path, "crazyguy", "BookerDB", "Affiliates.tsv"
+        ))
+        .exists());
+
+        let tables = File::load_tables("crazyguy", "BookerDB", Some(file_base_path)).unwrap();
+
+        assert_eq!(tables.len(), 1);
+
+        match File::drop_table("crazyguy", "BookerDB", "Affiliates", Some(file_base_path)) {
+            Ok(_) => {}
+            Err(e) => assert_eq!(format!("{}", e), "Table not exists. Please create table first."),
+        };
+
+        File::drop_table("crazyguy", "BookerDB", "Hotels", Some(file_base_path)).unwrap();
+
+        assert!(!Path::new(&format!(
+            "{}/{}/{}/{}",
+            file_base_path, "crazyguy", "BookerDB", "Hotels.tsv"
+        ))
+        .exists());
+
+        let tables = File::load_tables("crazyguy", "BookerDB", Some(file_base_path)).unwrap();
+
+        assert_eq!(tables.len(), 0);
     }
 }
