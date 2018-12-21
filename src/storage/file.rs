@@ -29,6 +29,8 @@ pub enum FileError {
     DbDirNotExists,
     TablesJsonNotExists,
     TableExists,
+    TableNotExists,
+    TableTsvNotExists,
     JsonParse,
 }
 
@@ -60,7 +62,7 @@ struct TablesJson {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct TableInfo {
+pub struct TableInfo {
     name: String,
     path_tsv: String,
     path_bin: String,
@@ -99,9 +101,11 @@ impl fmt::Display for FileError {
             FileError::DbsJsonNotExists => write!(f, "The `dbs.json` of the username is lost"),
             FileError::DbExists => write!(f, "DB already exists and cannot be created again."),
             FileError::DbNotExists => write!(f, "DB not exists. Please create DB first."),
-            FileError::DbDirNotExists => write!(f, "DB exists but correspoding data folder is lost"),
-            FileError::TablesJsonNotExists => write!(f, "The `tables.json` of the DB is lost"),
+            FileError::DbDirNotExists => write!(f, "DB exists but correspoding data folder is lost."),
+            FileError::TablesJsonNotExists => write!(f, "The `tables.json` of the DB is lost."),
             FileError::TableExists => write!(f, "Table already exists and cannot be created again."),
+            FileError::TableNotExists => write!(f, "Table not exists. Please create table first."),
+            FileError::TableTsvNotExists => write!(f, "Table exists but correspoding tsv file is lost."),
             FileError::JsonParse => write!(f, "JSON parsing error."),
         }
     }
@@ -177,7 +181,7 @@ impl File {
         match File::storage_hierarchy_check(base_path, None, None, None) {
             Ok(_) => (),
             Err(e) => return Err(e),
-        }
+        };
 
         // read and parse `usernames.json`
         let usernames_json_path = format!("{}/{}", base_path, "usernames.json");
@@ -201,7 +205,7 @@ impl File {
         match File::storage_hierarchy_check(base_path, None, None, None) {
             Ok(_) => (),
             Err(e) => return Err(e),
-        }
+        };
 
         // read and parse `usernames.json`
         let usernames_json_path = format!("{}/{}", base_path, "usernames.json");
@@ -243,7 +247,7 @@ impl File {
         match File::storage_hierarchy_check(base_path, Some(username), None, None) {
             Ok(_) => (),
             Err(e) => return Err(e),
-        }
+        };
 
         // load current dbs from `dbs.json`
         let dbs_json_path = format!("{}/{}/{}", base_path, username, "dbs.json");
@@ -296,7 +300,7 @@ impl File {
         match File::storage_hierarchy_check(base_path, Some(username), None, None) {
             Ok(_) => (),
             Err(e) => return Err(e),
-        }
+        };
 
         // read and parse `dbs.json`
         let dbs_json_path = format!("{}/{}/{}", base_path, username, "dbs.json");
@@ -320,7 +324,7 @@ impl File {
         match File::storage_hierarchy_check(base_path, Some(username), None, None) {
             Ok(_) => (),
             Err(e) => return Err(e),
-        }
+        };
 
         // load current dbs from `dbs.json`
         let dbs_json_path = format!("{}/{}/{}", base_path, username, "dbs.json");
@@ -364,7 +368,7 @@ impl File {
         match File::storage_hierarchy_check(base_path, Some(username), Some(db_name), None) {
             Ok(_) => (),
             Err(e) => return Err(e),
-        }
+        };
 
         // load current tables from `tables.json`
         let tables_json_path = format!("{}/{}/{}/{}", base_path, username, db_name, "tables.json");
@@ -425,6 +429,29 @@ impl File {
         tables_file.write_all(serde_json::to_string_pretty(&tables_json)?.as_bytes())?;
 
         Ok(())
+    }
+
+    pub fn load_tables(
+        username: &str,
+        db_name: &str,
+        file_base_path: Option<&str>,
+    ) -> Result<Vec<TableInfo>, FileError> {
+        // determine file base path
+        let base_path = file_base_path.unwrap_or(dotenv!("FILE_BASE_PATH"));
+
+        // perform storage check toward db level
+        match File::storage_hierarchy_check(base_path, Some(username), Some(db_name), None) {
+            Ok(_) => (),
+            Err(e) => return Err(e),
+        };
+
+        // load current tables from `tables.json`
+        let tables_json_path = format!("{}/{}/{}/{}", base_path, username, db_name, "tables.json");
+        let tables_file = fs::File::open(&tables_json_path)?;
+        let tables_json: TablesJson = serde_json::from_reader(tables_file)?;
+
+        // return the vector of table info
+        Ok(tables_json.tables)
     }
 
     // TODO: append_rows(username: &str, db_name: &str, table_name: &str, rows: &Vec<Row>, file_base_path: Option<&str>) -> Result<Vec<u32>, FileError>
@@ -507,13 +534,33 @@ impl File {
         }
 
         // check if `tables.json` exists
-        if !Path::new(&format!("{}/{}", db_path, "tables.json")).exists() {
+        let tables_json_path = format!("{}/{}", db_path, "tables.json");
+        if !Path::new(&tables_json_path).exists() {
             return Err(FileError::TablesJsonNotExists);
         }
 
         // db level check passed
         if table_name == None {
             return Ok(());
+        }
+
+        // check if table exists
+        let tables_file = fs::File::open(&tables_json_path)?;
+        let tables_json: TablesJson = serde_json::from_reader(tables_file)?;
+        if !tables_json
+            .tables
+            .iter()
+            .map(|table_info| table_info.name.clone())
+            .collect::<Vec<String>>()
+            .contains(&table_name.unwrap().to_string())
+        {
+            return Err(FileError::TableNotExists);
+        }
+
+        // check if table tsv exists
+        let table_tsv_path = format!("{}/{}.tsv", db_path, table_name.unwrap());
+        if !Path::new(&table_tsv_path).exists() {
+            return Err(FileError::TableTsvNotExists);
         }
 
         Ok(())
@@ -778,7 +825,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_create_table() {
+    pub fn test_create_and_load_table() {
         let file_base_path = "data7";
         if Path::new(file_base_path).exists() {
             fs::remove_dir_all(file_base_path).unwrap();
@@ -846,61 +893,48 @@ mod tests {
 
         File::create_table("crazyguy", "BookerDB", &htl_table, Some(file_base_path)).unwrap();
 
-        let tables_json_path = format!("{}/{}/{}/{}", file_base_path, "crazyguy", "BookerDB", "tables.json");
-        assert!(Path::new(&tables_json_path).exists());
+        let ideal_tables = vec![
+            TableInfo {
+                name: "Affiliates".to_string(),
+                path_tsv: "Affiliates.tsv".to_string(),
+                path_bin: "Affiliates.bin".to_string(),
+                primary_key: vec!["AffID".to_string()],
+                foreign_key: vec![],
+                reference_table: None,
+                // reference_attr: None,
+                last_rid: 0,
+                // ignore attrs checking
+                attrs_order: vec![],
+                attrs: HashMap::new(),
+            },
+            TableInfo {
+                name: "Hotels".to_string(),
+                path_tsv: "Hotels.tsv".to_string(),
+                path_bin: "Hotels.bin".to_string(),
+                primary_key: vec!["HotelID".to_string()],
+                foreign_key: vec![],
+                reference_table: None,
+                // reference_attr: None,
+                last_rid: 0,
+                // ignore attrs checking
+                attrs_order: vec![],
+                attrs: HashMap::new(),
+            },
+        ];
 
-        let tables_json = fs::read_to_string(tables_json_path).unwrap();
-        let tables_json: TablesJson = serde_json::from_str(&tables_json).unwrap();
+        let tables = File::load_tables("crazyguy", "BookerDB", Some(file_base_path)).unwrap();
 
-        let ideal_tables_json = TablesJson {
-            tables: vec![
-                TableInfo {
-                    name: "Affiliates".to_string(),
-                    path_tsv: "Affiliates.tsv".to_string(),
-                    path_bin: "Affiliates.bin".to_string(),
-                    primary_key: vec!["AffID".to_string()],
-                    foreign_key: vec![],
-                    reference_table: None,
-                    // reference_attr: None,
-                    last_rid: 0,
-                    // ignore attrs checking
-                    attrs_order: vec![],
-                    attrs: HashMap::new(),
-                },
-                TableInfo {
-                    name: "Hotels".to_string(),
-                    path_tsv: "Hotels.tsv".to_string(),
-                    path_bin: "Hotels.bin".to_string(),
-                    primary_key: vec!["HotelID".to_string()],
-                    foreign_key: vec![],
-                    reference_table: None,
-                    // reference_attr: None,
-                    last_rid: 0,
-                    // ignore attrs checking
-                    attrs_order: vec![],
-                    attrs: HashMap::new(),
-                },
-            ],
-        };
+        assert_eq!(tables.len(), 2);
 
-        for i in 0..tables_json.tables.len() {
-            assert_eq!(tables_json.tables[i].name, ideal_tables_json.tables[i].name);
-            assert_eq!(tables_json.tables[i].path_tsv, ideal_tables_json.tables[i].path_tsv);
-            assert_eq!(tables_json.tables[i].path_bin, ideal_tables_json.tables[i].path_bin);
-            assert_eq!(
-                tables_json.tables[i].primary_key,
-                ideal_tables_json.tables[i].primary_key
-            );
-            assert_eq!(
-                tables_json.tables[i].foreign_key,
-                ideal_tables_json.tables[i].foreign_key
-            );
-            assert_eq!(
-                tables_json.tables[i].reference_table,
-                ideal_tables_json.tables[i].reference_table
-            );
-            // assert_eq!(tables_json.tables[i].reference_attr, ideal_tables_json.tables[i].reference_attr);
-            assert_eq!(tables_json.tables[i].last_rid, ideal_tables_json.tables[i].last_rid);
+        for i in 0..tables.len() {
+            assert_eq!(tables[i].name, ideal_tables[i].name);
+            assert_eq!(tables[i].path_tsv, ideal_tables[i].path_tsv);
+            assert_eq!(tables[i].path_bin, ideal_tables[i].path_bin);
+            assert_eq!(tables[i].primary_key, ideal_tables[i].primary_key);
+            assert_eq!(tables[i].foreign_key, ideal_tables[i].foreign_key);
+            assert_eq!(tables[i].reference_table, ideal_tables[i].reference_table);
+            // assert_eq!(tables[i].reference_attr, ideal_tables[i].reference_attr);
+            assert_eq!(tables[i].last_rid, ideal_tables[i].last_rid);
         }
 
         assert!(Path::new(&format!(
