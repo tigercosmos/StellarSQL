@@ -5,7 +5,7 @@ use std::io::Seek;
 use std::io::prelude::*;
 use std::mem;
 
-pub struct TableInfo {
+struct TableInfo {
     table_name: String,
     key_type: String,
     key_offet: u32,
@@ -101,7 +101,7 @@ fn type_string_construct(table_info: TableInfo) {
     }
 }
 
-pub fn construct_index(table_info: TableInfo) {
+fn construct_index(table_info: TableInfo) {
     if table_info.key_type == "Int" {
         type_int_construct(table_info);
     } else if table_info.key_type == "String" {
@@ -109,4 +109,16 @@ pub fn construct_index(table_info: TableInfo) {
     } else {
         println!("construct_index invalid");
     }
+}
+
+// test
+fn test_construct_index() {
+    let table_info = TableInfo {
+        table_name: String::from("1.in"),
+        key_type: String::from("Int"),
+        key_offet: 0,
+        key_bytes: 4,
+        row_bytes: 4,
+    };
+    construct_index(table_info);
 }
