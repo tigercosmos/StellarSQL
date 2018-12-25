@@ -1,8 +1,8 @@
-use std::io;
 use std::fs::File;
-use std::io::SeekFrom;
-use std::io::Seek;
+use std::io;
 use std::io::prelude::*;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::mem;
 
 struct TableInfo {
@@ -19,7 +19,7 @@ struct IndexDataStructureInt {
 }
 struct IndexDataStructureString {
     row: u32,
-    key_value: Vec<u8>
+    key_value: Vec<u8>,
 }
 
 
@@ -32,7 +32,7 @@ fn type_int_construct(table_info: TableInfo) {
     let table_index_name = table_name.clone() + "index";
     let mut file = File::open(table_name).unwrap();
     file.seek(SeekFrom::Start(table_info.key_offet as u64));
-    let mut buffer = [0;4];
+    let mut buffer = [0; 4];
     loop {
         let bytes_read = match file.read(&mut buffer) {
             Ok(0) => break, // end-of-file
@@ -47,7 +47,7 @@ fn type_int_construct(table_info: TableInfo) {
                 }
                 file.seek(SeekFrom::Current(bytes_to_slide as i64));
                 row = row + 1;
-            },
+            }
             Err(e) => {
                 println!("error{}", e);
             }
@@ -57,9 +57,9 @@ fn type_int_construct(table_info: TableInfo) {
     index_arr.sort_unstable_by(|a, b| a.key_value.cmp(&b.key_value));
     let mut file_write = File::create(table_index_name).unwrap();
     for i in 0..index_arr.len() {
-        let row_temp = unsafe{mem::transmute::<u32, [u8; 4]>(index_arr[i].row)};
+        let row_temp = unsafe{ mem::transmute::<u32, [u8; 4]>(index_arr[i].row) };
         file_write.write(&row_temp);
-        let key_temp = unsafe{mem::transmute::<u32, [u8; 4]>(index_arr[i].key_value)};
+        let key_temp = unsafe{ mem::transmute::<u32, [u8; 4]>(index_arr[i].key_value) };
         file_write.write(&key_temp);
     }
 
@@ -85,7 +85,7 @@ fn type_string_construct(table_info: TableInfo) {
                 index_arr.push(index_content);
                 file.seek(SeekFrom::Current(bytes_to_slide as i64));
                 row = row + 1;
-            },
+            }
             Err(e) => {
                 println!("error{}", e);
             }
@@ -95,7 +95,7 @@ fn type_string_construct(table_info: TableInfo) {
     index_arr.sort_unstable_by(|a, b| a.key_value.cmp(&b.key_value));
     let mut file_write = File::create(table_index_name).unwrap();
     for i in 0..index_arr.len() {
-        let row_temp = unsafe{mem::transmute::<u32, [u8; 4]>(index_arr[i].row)};
+        let row_temp = unsafe{ mem::transmute::<u32, [u8; 4]>(index_arr[i].row) };
         file_write.write(&row_temp);
         file_write.write(&index_arr[i].key_value);
     }
