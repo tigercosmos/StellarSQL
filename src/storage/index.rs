@@ -22,8 +22,6 @@ struct IndexDataStructureString {
     key_value: Vec<u8>,
 }
 
-
-
 fn type_int_construct(table_info: TableInfo) {
     let mut row = 0;
     let mut bytes_to_slide = table_info.row_bytes - table_info.key_bytes;
@@ -62,7 +60,6 @@ fn type_int_construct(table_info: TableInfo) {
         let key_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr[i].key_value) };
         file_write.write(&key_temp);
     }
-
 }
 
 fn type_string_construct(table_info: TableInfo) {
