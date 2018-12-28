@@ -218,7 +218,7 @@ pub fn insert_string_index_table(
     } else {
         let mut target = 0;
         for i in 0..index_arr.0.len() {
-            if(insert_value.key_value <= index_arr.0[i].key_value) {
+            if (insert_value.key_value <= index_arr.0[i].key_value) {
                 target = i;
                 break;
             }
