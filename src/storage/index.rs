@@ -79,14 +79,13 @@ fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut Vec<IndexDataStr
         let bytes_read = match file.read(&mut buffer_row) {
             Ok(0) => break, // end-of-file
             Ok(n) => unsafe {
-                    let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
-                    file.read(&mut buffer_key);
-                    let temp_key = mem::transmute::<[u8; 4], u32>(buffer_key);
-                    let mut index_content = IndexDataStructureInt {
-                        row: temp_row,
-                        key_value: temp_key,
-                    };
-                    index_arr.push(index_content);
+                let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
+                file.read(&mut buffer_key);
+                let temp_key = mem::transmute::<[u8; 4], u32>(buffer_key);
+                let mut index_content = IndexDataStructureInt {
+                    row: temp_row,                        key_value: temp_key,
+                };
+                index_arr.push(index_content);
             },
             Err(e) => {
                 println!("read_int_index_table error{}", e);
@@ -164,13 +163,13 @@ fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut Vec<IndexData
         let bytes_read = match file.read(&mut buffer_row) {
             Ok(0) => break, // end-of-file
             Ok(n) => unsafe {
-                    let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
-                    file.read(&mut buffer_key);
-                    let mut index_content = IndexDataStructureString {
-                        row: temp_row,
-                        key_value: buffer_key.clone(),
-                    };
-                    index_arr.push(index_content);
+                let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
+                file.read(&mut buffer_key);
+                let mut index_content = IndexDataStructureString {
+                    row: temp_row,
+                    key_value: buffer_key.clone(),
+                };
+                index_arr.push(index_content);
             },
             Err(e) => {
                 println!("read_int_index_table error{}", e);
