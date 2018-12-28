@@ -48,7 +48,6 @@ pub struct IndexDataStructureString {
 pub struct IndexInt(Vec<IndexDataStructureInt>);
 pub struct IndexString(Vec<IndexDataStructureString>);
 
-
 // build index table with raw table in whicj key type is int
 pub fn build_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) -> Result<(), IndexErr> {
     let mut row = 0;
