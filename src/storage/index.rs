@@ -1,9 +1,9 @@
-use std::io;
-use std::fs::File;
-use std::io::SeekFrom;
-use std::io::Seek;
-use std::io::prelude::*;
 use std::fmt;
+use std::fs::File;
+use std::io;
+use std::io::prelude::*;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::mem;
 
 #[derive(Debug)]
@@ -42,7 +42,7 @@ pub struct IndexDataStructureInt {
 // row and key value pair in which key type is string
 pub struct IndexDataStructureString {
     row: u32,
-    key_value: Vec<u8>
+    key_value: Vec<u8>,
 }
 
 pub struct IndexInt(Vec<IndexDataStructureInt>);
@@ -71,7 +71,7 @@ pub fn build_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) -
                 }
                 file.seek(SeekFrom::Current(bytes_to_slide as i64));
                 row = row + 1;
-            },
+            }
             Err(e) => {
                 return Err(IndexErr::BuildIntIndexTableError);
             }
@@ -87,9 +87,9 @@ pub fn write_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) -
     let table_index_name = table_meta.table_name.clone() + "index";
     let mut file_write = File::create(table_index_name).unwrap();
     for i in 0..index_arr.0.len() {
-        let row_temp = unsafe{mem::transmute::<u32, [u8; 4]>(index_arr.0[i].row)};
+        let row_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr.0[i].row) };
         file_write.write(&row_temp);
-        let key_temp = unsafe{mem::transmute::<u32, [u8; 4]>(index_arr.0[i].key_value)};
+        let key_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr.0[i].key_value) };
         file_write.write(&key_temp);
     }
     Ok(())
@@ -104,17 +104,15 @@ pub fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) ->
     loop {
         let bytes_read = match file.read(&mut buffer_row) {
             Ok(0) => break, // end-of-file
-            Ok(n) => {
-                unsafe {
-                    let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
-                    file.read(&mut buffer_key);
-                    let temp_key = mem::transmute::<[u8; 4], u32>(buffer_key);
-                    let mut index_content = IndexDataStructureInt {
-                        row: temp_row,
-                        key_value: temp_key,
-                    };
-                    index_arr.0.push(index_content);
-                }
+            Ok(n) => unsafe {
+                let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
+                file.read(&mut buffer_key);
+                let temp_key = mem::transmute::<[u8; 4], u32>(buffer_key);
+                let mut index_content = IndexDataStructureInt {
+                    row: temp_row,
+                    key_value: temp_key,
+                };
+                index_arr.0.push(index_content);
             },
             Err(e) => {
                 return Err(IndexErr::ReadIntIndexTableError);
@@ -127,20 +125,20 @@ pub fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) ->
 // insert into index table in which key type is int
 // if work, use b-insert
 pub fn insert_int_index_table(insert_value: IndexDataStructureInt, index_arr: &mut IndexInt) -> Result<(), IndexErr> {
-    if(index_arr.0.is_empty()) {
+    if (index_arr.0.is_empty()) {
         index_arr.0.push(insert_value);
     } else {
         let mut target = 0;
         for i in 0..index_arr.0.len() {
-            if(insert_value.key_value <= index_arr.0[i].key_value) {
+            if (insert_value.key_value <= index_arr.0[i].key_value) {
                 target = i;
                 break;
             }
         }
-        if(target == 0) {
+        if (target == 0) {
             index_arr.0.insert(target, insert_value);
         } else {
-            index_arr.0.insert(target-1, insert_value);
+            index_arr.0.insert(target - 1, insert_value);
         }
     }
     Ok(())
@@ -164,7 +162,7 @@ pub fn build_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexStr
                 index_arr.0.push(index_content);
                 file.seek(SeekFrom::Current(bytes_to_slide as i64));
                 row = row + 1;
-            },
+            }
             Err(e) => {
                 return Err(IndexErr::BuildStringIndexTableError);
             }
@@ -179,7 +177,7 @@ pub fn write_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexStr
     let table_index_name = table_meta.table_name.clone() + "index";
     let mut file_write = File::create(table_index_name).unwrap();
     for i in 0..index_arr.0.len() {
-        let row_temp = unsafe{mem::transmute::<u32, [u8; 4]>(index_arr.0[i].row)};
+        let row_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr.0[i].row) };
         file_write.write(&row_temp);
         file_write.write(&index_arr.0[i].key_value);
     }
@@ -194,16 +192,14 @@ pub fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexStri
     loop {
         let bytes_read = match file.read(&mut buffer_row) {
             Ok(0) => break, // end-of-file
-            Ok(n) => {
-                unsafe {
-                    let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
-                    file.read(&mut buffer_key);
-                    let mut index_content = IndexDataStructureString {
-                        row: temp_row,
-                        key_value: buffer_key.clone(),
-                    };
-                    index_arr.0.push(index_content);
-                }
+            Ok(n) => unsafe {
+                let temp_row = mem::transmute::<[u8; 4], u32>(buffer_row);
+                file.read(&mut buffer_key);
+                let mut index_content = IndexDataStructureString {
+                    row: temp_row,
+                    key_value: buffer_key.clone(),
+                };
+                index_arr.0.push(index_content);
             },
             Err(e) => {
                 return Err(IndexErr::ReadStringIndexTableError);
@@ -213,8 +209,11 @@ pub fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexStri
     Ok(())
 }
 
-pub fn insert_string_index_table(insert_value: IndexDataStructureString, index_arr: &mut IndexString) -> Result<(), IndexErr> {
-    if(index_arr.0.is_empty()) {
+pub fn insert_string_index_table(
+    insert_value: IndexDataStructureString,
+    index_arr: &mut IndexString,
+) -> Result<(), IndexErr> {
+    if (index_arr.0.is_empty()) {
         index_arr.0.push(insert_value);
     } else {
         let mut target = 0;
@@ -224,10 +223,10 @@ pub fn insert_string_index_table(insert_value: IndexDataStructureString, index_a
                 break;
             }
         }
-        if(target == 0) {
+        if (target == 0) {
             index_arr.0.insert(target, insert_value);
         } else {
-            index_arr.0.insert(target-1, insert_value);
+            index_arr.0.insert(target - 1, insert_value);
         }
     }
     Ok(())
