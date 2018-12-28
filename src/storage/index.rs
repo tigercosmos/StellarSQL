@@ -83,7 +83,8 @@ fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut Vec<IndexDataStr
                 file.read(&mut buffer_key);
                 let temp_key = mem::transmute::<[u8; 4], u32>(buffer_key);
                 let mut index_content = IndexDataStructureInt {
-                    row: temp_row,                        key_value: temp_key,
+                    row: temp_row,
+                    key_value: temp_key,
                 };
                 index_arr.push(index_content);
             },
