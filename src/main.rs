@@ -86,7 +86,7 @@ fn process(socket: TcpStream) {
     // generate a response.
     let responses = messages.map(move |message| match Request::parse(&message, &mut sql) {
         Ok(req) => req,
-        Err(e) => return Response::Error { msg: e },
+        Err(e) => return Response::Error { msg: format!("{}", e) },
     });
 
     // At this point `responses` is a stream of `Response` types which we
