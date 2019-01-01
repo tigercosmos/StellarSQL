@@ -1,15 +1,12 @@
-use crate::Response;
-use crate::sql::worker::SQL;
-use crate::sql::worker::SQLError;
 use crate::sql::parser::Parser;
 use crate::sql::parser::ParserError;
+use crate::sql::worker::SQLError;
+use crate::sql::worker::SQL;
+use crate::Response;
 use std::fmt;
 
-
 #[derive(Debug)]
-pub struct Request {
-}
-
+pub struct Request {}
 
 #[derive(Debug)]
 pub enum RequestError {
@@ -34,20 +31,19 @@ impl fmt::Display for RequestError {
     }
 }
 
-
 impl Request {
     pub fn parse(input: &str, mut sql: &mut SQL) -> Result<Response, RequestError> {
         /*
          * request format
-         * case1: 
+         * case1:
          * username||databasename||command;
          * case2:
          * username||||create dbname;
          *
          */
-        let mut split_str: Vec<&str>= input.split("||").collect();
+        let mut split_str: Vec<&str> = input.split("||").collect();
         if split_str.len() != 3 {
-            return Err( RequestError::BadRequest );
+            return Err(RequestError::BadRequest);
         }
 
         let username = split_str[0];
@@ -58,9 +54,9 @@ impl Request {
         if sql.username == "" {
             if Request::user_verify(username).is_ok() {
                 sql.username = username.to_string();
-            }else{
+            } else {
                 // user not existed
-                return Err(  RequestError::UserNotExist(username.to_string()) );
+                return Err(RequestError::UserNotExist(username.to_string()));
             }
         }
 
@@ -68,29 +64,30 @@ impl Request {
         if dbname != "" {
             if sql.database.name == "" {
                 match sql.load_database(dbname) {
-                    Err(ret) => return Err( RequestError::SQLError(ret) ),
-                    Ok(e) => {},
+                    Err(ret) => return Err(RequestError::SQLError(ret)),
+                    Ok(e) => {}
                 }
             }
             let parser = Parser::new(&cmd).unwrap();
             match parser.parse(&mut sql) {
-                Err(ret) => return Err( RequestError::CauseByParser(ret) ), 
-                Ok(e) => {},
+                Err(ret) => return Err(RequestError::CauseByParser(ret)),
+                Ok(e) => {}
             }
-        }else{
+        } else {
             // check cmd if it is "create database dbname;"
             let mut iter = cmd.split_whitespace();
-            if iter.next() != Some("create") || iter.next() != Some("database"){
-                return Err( RequestError::CreateDBBeforeCmd );
+            if iter.next() != Some("create") || iter.next() != Some("database") {
+                return Err(RequestError::CreateDBBeforeCmd);
             }
             let parser = Parser::new(&cmd).unwrap();
             match parser.parse(&mut sql) {
-                Err(ret) => return Err( RequestError::CauseByParser(ret) ), 
-                Ok(e) => {},
+                Err(ret) => return Err(RequestError::CauseByParser(ret)),
+                Ok(e) => {}
             }
-
         }
-        Ok(Response::OK { msg: "Query OK!".to_string() })
+        Ok(Response::OK {
+            msg: "Query OK!".to_string(),
+        })
         //Ok(Response::OK { msg: format!("{}, user:{}",input, sql.username) })
     }
     fn user_verify(name: &str) -> Result<(), ()> {

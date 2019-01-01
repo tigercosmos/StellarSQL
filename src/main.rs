@@ -18,10 +18,10 @@ use clap::App;
 use std::io::BufReader;
 use tokio::io::write_all;
 
-use crate::sql::worker::SQL;
 use crate::connection::message;
 use crate::connection::request::Request;
 use crate::connection::response::Response;
+use crate::sql::worker::SQL;
 use env_logger;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
