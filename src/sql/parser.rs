@@ -3,6 +3,8 @@ use crate::component::field::Field;
 use crate::component::table::Table;
 use crate::sql::lexer::LexerError;
 use crate::sql::lexer::Scanner;
+use crate::sql::query::Node;
+use crate::sql::query::QueryData;
 use crate::sql::symbol::Group;
 use crate::sql::symbol::Symbol;
 use crate::sql::symbol::Token;
@@ -260,6 +262,135 @@ fn parser_insert_into_table(
     Ok((table_name, attrs, rows))
 }
 
+/// Parse a predicate as a tree
+fn parse_predicate(symbols: Vec<&Symbol>) -> Result<Box<Node>, ParserError> {
+    let postfix_vec = parse_infix_postfix(symbols)?;
+    parse_postfix_tree(postfix_vec)
+}
+
+/// Parse a postfix to a binary tree, and do semantic check
+fn parse_postfix_tree(symbols: Vec<&Symbol>) -> Result<Box<Node>, ParserError> {
+    let mut iter = symbols.iter();
+    let mut nodes_stack: Vec<Node> = vec![];
+    loop {
+        match iter.next() {
+            Some(s) if s.group == Group::Identifier => nodes_stack.push(Node::new(s.name.clone())),
+            Some(s) if s.group == Group::Operator => match s.token {
+                Token::AND | Token::OR => {
+                    let tree = Node::new(s.name.clone())
+                        .right(nodes_stack.pop().unwrap())
+                        .left(nodes_stack.pop().unwrap());
+                    nodes_stack.push(tree);
+                }
+                Token::NOT => {
+                    let tree = Node::new(s.name.clone()).right(nodes_stack.pop().unwrap());
+                    nodes_stack.push(tree);
+                }
+                Token::LT | Token::LE | Token::EQ | Token::NE | Token::GT | Token::GE => {
+                    let right = nodes_stack.pop().unwrap();
+                    let left = nodes_stack.pop().unwrap();
+
+                    // TODO: check right value
+                    // TODO: check left value
+
+                    let tree = Node::new(s.name.clone()).right(right).left(left);
+                    nodes_stack.push(tree);
+                }
+                _ => {}
+            },
+            Some(_) => return Err(ParserError::SyntaxError(String::from("invalid predicate syntax"))),
+            None => break,
+        }
+    }
+
+    let tree = nodes_stack.pop().unwrap();
+
+    if nodes_stack.len() != 0 {
+        return Err(ParserError::SyntaxError(String::from("invalid predicate syntax")));
+    }
+
+    Ok(Box::new(tree))
+}
+
+/// in order traversal
+fn in_order(node: Box<Node>, vec: &mut Vec<String>) {
+    if node.left.is_some() {
+        in_order(node.left.unwrap(), vec);
+    }
+    vec.push(node.root.clone());
+    if node.right.is_some() {
+        in_order(node.right.unwrap(), vec);
+    }
+}
+
+/// parse predicate tokens from infix to postfix
+fn parse_infix_postfix(symbols: Vec<&Symbol>) -> Result<Vec<&Symbol>, ParserError> {
+    let mut iter = symbols.iter();
+    let mut stack: Vec<&Symbol> = vec![];
+    let mut output: Vec<&Symbol> = vec![];
+    loop {
+        let mut parent_counter = 0;
+        match iter.next() {
+            Some(s) if s.token == Token::ParentLeft => {
+                parent_counter += 1;
+                stack.push(*s);
+            }
+            Some(s) if s.token == Token::ParentRight => loop {
+                match stack.pop() {
+                    Some(s_) if s_.token == Token::ParentLeft => {
+                        parent_counter -= 1;
+                        break;
+                    }
+                    Some(s_) => output.push(s_),
+                    None => break,
+                }
+            },
+            Some(s) if s.group == Group::Operator => {
+                loop {
+                    match stack.last() {
+                        Some(last) if last.group == Group::Operator => {
+                            let l = operator_priority(&last.token);
+                            let r = operator_priority(&s.token);
+                            if l >= r {
+                                output.push(*last);
+                                stack.pop();
+                            } else {
+                                break;
+                            }
+                        }
+                        Some(_) | None => break,
+                    }
+                }
+                stack.push(*s);
+            }
+            Some(s) => output.push(*s),
+            None => {
+                if parent_counter > 0 {
+                    return Err(ParserError::SyntaxError(String::from("invalid predicate syntax")));
+                }
+                loop {
+                    match stack.pop() {
+                        Some(s_) => output.push(s_),
+                        None => break,
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    Ok(output)
+}
+
+#[inline]
+fn operator_priority(t: &Token) -> u32 {
+    match t {
+        &Token::NOT => 2,
+        &Token::AND | &Token::OR => 1,
+        _ => 3, // >=, >, =, <, <=
+    }
+}
+
 /// Get a list of identifiers, which in form as
 ///
 /// `is_parent` parameter
@@ -449,4 +580,104 @@ mod tests {
             Err(e) => assert_eq!(format!("{}", e), "error caused by lexer: please use ascii character."),
         }
     }
+
+    fn assert_parse_infix_postfix(query: &str, answer: Vec<&str>) {
+        let mut parser = Parser::new(query).unwrap();
+        parser.tokens.pop(); // `;`
+        let mut iter = parser.tokens.iter();
+        let mut tokens: Vec<&Symbol> = vec![];
+        loop {
+            match iter.next() {
+                Some(s) => tokens.push(s),
+                None => break,
+            }
+        }
+        let postfix = parse_infix_postfix(tokens).unwrap();
+        println!("{:?}", postfix);
+        println!("{:?}", answer);
+        for i in 0..answer.len() {
+            assert_eq!(&postfix[i].name, answer[i]);
+        }
+    }
+
+    #[test]
+    fn test_parse_infix_postfix() {
+        let query = "not a1 = 3 and b2 >= 5;";
+        let answer = ["a1", "3", "=", "not", "b2", "5", ">=", "and"];
+        assert_parse_infix_postfix(query, answer.to_vec());
+
+        let query = "not(not a1 = 3 and not (b2 >= 5 or c1 < 7));";
+        let answer = [
+            "a1", "3", "=", "not", "b2", "5", ">=", "c1", "7", "<", "or", "not", "and", "not",
+        ];
+        assert_parse_infix_postfix(query, answer.to_vec());
+    }
+
+    fn assert_parse_postfix_tree(query: &str, answer: Vec<&str>) {
+        let mut parser = Parser::new(query).unwrap();
+        parser.tokens.pop(); // `;`
+        let mut iter = parser.tokens.iter();
+        let mut tokens: Vec<&Symbol> = vec![];
+        loop {
+            match iter.next() {
+                Some(s) => tokens.push(s),
+                None => break,
+            }
+        }
+        let mut output = vec![];
+        let tree = parse_postfix_tree(tokens).unwrap();
+        in_order(tree, &mut output);
+        println!("{:?}", output);
+        println!("{:?}", answer);
+        for i in 0..answer.len() {
+            assert_eq!(&output[i], answer[i]);
+        }
+    }
+
+    #[test]
+    fn test_parse_postfix_tree() {
+        let postfix = "a1 3 = not b2 5 >= and ;";
+        let answer = ["not", "a1", "=", "3", "and", "b2", ">=", "5"];
+        assert_parse_postfix_tree(postfix, answer.to_vec());
+
+        let postfix = "a1 3 = not b2 5 >= c1 7 < or not and not ;";
+        let answer = [
+            "not", "not", "a1", "=", "3", "and", "not", "b2", ">=", "5", "or", "c1", "<", "7",
+        ];
+        assert_parse_postfix_tree(postfix, answer.to_vec());
+    }
+
+    fn assert_parse_predicate(query: &str, answer: &str) {
+        let mut parser = Parser::new(query).unwrap();
+        parser.tokens.pop(); // `;`
+        let mut iter = parser.tokens.iter();
+        let mut tokens: Vec<&Symbol> = vec![];
+        loop {
+            match iter.next() {
+                Some(s) => tokens.push(s),
+                None => break,
+            }
+        }
+        let mut output = vec![];
+        let tree = parse_predicate(tokens).unwrap();
+        in_order(tree, &mut output);
+        let mut in_order_string = "".to_string();
+        for i in output {
+            in_order_string += &i;
+            in_order_string += " ";
+        }
+        in_order_string += ";";
+        assert_eq!(in_order_string, answer);
+    }
+
+    #[test]
+    fn test_parse_predicate() {
+        let query = "a1 >= 3 and b3 <= 7 or c1 = 4 and not d1 = 3 ;"; // a space before `;` is required
+        assert_parse_predicate(query, query);
+
+        let query = "not (a1 >= 3 and b3 <= 7) or not (c1 = 4 and d1 = 3);";
+        let answer = "not a1 >= 3 and b3 <= 7 or not c1 = 4 and d1 = 3 ;"; // a space before `;` is required
+        assert_parse_predicate(query, answer);
+    }
+
 }
