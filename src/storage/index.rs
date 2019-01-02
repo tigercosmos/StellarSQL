@@ -289,7 +289,7 @@ mod tests {
     #[test]
     pub fn test_construct_index() {
         let table_meta = TableMeta {
-            table_name: String::from("1.in"),
+            table_name: String::from("test/1.in"),
             key_type: String::from("Int"),
             key_offet: 0,
             key_bytes: 4,
