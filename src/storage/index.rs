@@ -196,7 +196,10 @@ fn write_string_index_table(table_meta: &TableMeta, index_arr: &Vec<IndexDataStr
     Ok(())
 }
 
-fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut Vec<IndexDataStructureString>) -> Result<(), IndexErr> {
+fn read_string_index_table(
+    table_meta: &TableMeta,
+    index_arr: &mut Vec<IndexDataStructureString>,
+) -> Result<(), IndexErr> {
     let table_index_name = table_meta.table_name.clone() + "index";
     let mut file = File::open(table_index_name).unwrap();
     let mut buffer_row = [0; 4];
