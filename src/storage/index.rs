@@ -39,17 +39,30 @@ pub struct IndexDataStructureInt {
     row: u32,
     key_value: u32,
 }
+
 // row and key value pair in which key type is string
 pub struct IndexDataStructureString {
     row: u32,
     key_value: Vec<u8>,
 }
 
+//
 pub struct IndexInt(Vec<IndexDataStructureInt>);
 pub struct IndexString(Vec<IndexDataStructureString>);
 
+pub enum Index {
+    IndexInt(Vec<IndexDataStructureInt>),
+    IndexString(Vec<IndexDataStructureString>),
+}
+
+pub enum IndexDataStructure {
+    IndexInt(IndexDataStructureInt),
+    IndexString(IndexDataStructureString),
+}
+
 // build index table with raw table in whicj key type is int
-pub fn build_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) -> Result<(), IndexErr> {
+fn build_int_index_table(table_meta: &TableMeta) -> Result<(Vec<IndexDataStructureInt>), IndexErr> {
+    let mut index_arr = IndexInt(vec![]);
     let mut row = 0;
     let mut bytes_to_slide = table_meta.row_bytes - table_meta.key_bytes;
     let table_name = table_meta.table_name.clone();
@@ -78,24 +91,24 @@ pub fn build_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) -
     }
 
     index_arr.0.sort_unstable_by(|a, b| a.key_value.cmp(&b.key_value));
-    Ok(())
+    Ok((index_arr.0))
 }
 
 // write index table into index file
-pub fn write_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) -> Result<(), IndexErr> {
+fn write_int_index_table(table_meta: &TableMeta, index_arr: &Vec<IndexDataStructureInt>) -> Result<(), IndexErr> {
     let table_index_name = table_meta.table_name.clone() + "index";
     let mut file_write = File::create(table_index_name).unwrap();
-    for i in 0..index_arr.0.len() {
-        let row_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr.0[i].row) };
+    for i in 0..index_arr.len() {
+        let row_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr[i].row) };
         file_write.write(&row_temp);
-        let key_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr.0[i].key_value) };
+        let key_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr[i].key_value) };
         file_write.write(&key_temp);
     }
     Ok(())
 }
 
 // read index table from index file
-pub fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) -> Result<(), IndexErr> {
+fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut Vec<IndexDataStructureInt>) -> Result<(), IndexErr> {
     let table_index_name = table_meta.table_name.clone() + "index";
     let mut file = File::open(table_index_name).unwrap();
     let mut buffer_row = [0; 4];
@@ -111,7 +124,7 @@ pub fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) ->
                     row: temp_row,
                     key_value: temp_key,
                 };
-                index_arr.0.push(index_content);
+                index_arr.push(index_content);
             },
             Err(e) => {
                 return Err(IndexErr::ReadIntIndexTableError);
@@ -123,27 +136,27 @@ pub fn read_int_index_table(table_meta: &TableMeta, index_arr: &mut IndexInt) ->
 
 // insert into index table in which key type is int
 // if work, use b-insert
-pub fn insert_int_index_table(insert_value: IndexDataStructureInt, index_arr: &mut IndexInt) -> Result<(), IndexErr> {
-    if (index_arr.0.is_empty()) {
-        index_arr.0.push(insert_value);
+pub fn insert_int_index_table(insert_value: IndexDataStructureInt, index_arr: &mut Vec<IndexDataStructureInt>) {
+    if (index_arr.is_empty()) {
+        index_arr.push(insert_value);
     } else {
         let mut target = 0;
-        for i in 0..index_arr.0.len() {
-            if (insert_value.key_value <= index_arr.0[i].key_value) {
+        for i in 0..index_arr.len() {
+            if (insert_value.key_value <= index_arr[i].key_value) {
                 target = i;
                 break;
             }
         }
         if (target == 0) {
-            index_arr.0.insert(target, insert_value);
+            index_arr.insert(target, insert_value);
         } else {
-            index_arr.0.insert(target - 1, insert_value);
+            index_arr.insert(target - 1, insert_value);
         }
     }
-    Ok(())
 }
 
-pub fn build_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexString) -> Result<(), IndexErr> {
+fn build_string_index_table(table_meta: &TableMeta) -> Result<(Vec<IndexDataStructureString>), IndexErr> {
+    let mut index_arr = IndexString(vec![]);
     let mut row = 0;
     let mut bytes_to_slide = table_meta.row_bytes - table_meta.key_bytes;
     let table_name = table_meta.table_name.clone();
@@ -169,21 +182,21 @@ pub fn build_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexStr
     }
 
     index_arr.0.sort_unstable_by(|a, b| a.key_value.cmp(&b.key_value));
-    Ok(())
+    Ok((index_arr.0))
 }
 
-pub fn write_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexString) -> Result<(), IndexErr> {
+fn write_string_index_table(table_meta: &TableMeta, index_arr: &Vec<IndexDataStructureString>) -> Result<(), IndexErr> {
     let table_index_name = table_meta.table_name.clone() + "index";
     let mut file_write = File::create(table_index_name).unwrap();
-    for i in 0..index_arr.0.len() {
-        let row_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr.0[i].row) };
+    for i in 0..index_arr.len() {
+        let row_temp = unsafe { mem::transmute::<u32, [u8; 4]>(index_arr[i].row) };
         file_write.write(&row_temp);
-        file_write.write(&index_arr.0[i].key_value);
+        file_write.write(&index_arr[i].key_value);
     }
     Ok(())
 }
 
-pub fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexString) -> Result<(), IndexErr> {
+fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut Vec<IndexDataStructureString>) -> Result<(), IndexErr> {
     let table_index_name = table_meta.table_name.clone() + "index";
     let mut file = File::open(table_index_name).unwrap();
     let mut buffer_row = [0; 4];
@@ -198,7 +211,7 @@ pub fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexStri
                     row: temp_row,
                     key_value: buffer_key.clone(),
                 };
-                index_arr.0.push(index_content);
+                index_arr.push(index_content);
             },
             Err(e) => {
                 return Err(IndexErr::ReadStringIndexTableError);
@@ -210,51 +223,76 @@ pub fn read_string_index_table(table_meta: &TableMeta, index_arr: &mut IndexStri
 
 pub fn insert_string_index_table(
     insert_value: IndexDataStructureString,
-    index_arr: &mut IndexString,
-) -> Result<(), IndexErr> {
-    if (index_arr.0.is_empty()) {
-        index_arr.0.push(insert_value);
+    index_arr: &mut Vec<IndexDataStructureString>,
+) {
+    if (index_arr.is_empty()) {
+        index_arr.push(insert_value);
     } else {
         let mut target = 0;
-        for i in 0..index_arr.0.len() {
-            if (insert_value.key_value <= index_arr.0[i].key_value) {
+        for i in 0..index_arr.len() {
+            if (insert_value.key_value <= index_arr[i].key_value) {
                 target = i;
                 break;
             }
         }
         if (target == 0) {
-            index_arr.0.insert(target, insert_value);
+            index_arr.insert(target, insert_value);
         } else {
-            index_arr.0.insert(target - 1, insert_value);
+            index_arr.insert(target - 1, insert_value);
         }
     }
-    Ok(())
 }
 
-#[test]
-pub fn test_construct_index() {
-    let table_meta = TableMeta {
-        table_name: String::from("1.in"),
-        key_type: String::from("Int"),
-        key_offet: 0,
-        key_bytes: 4,
-        row_bytes: 4,
-    };
-    let mut index_arr = IndexInt(vec![]);
-    build_int_index_table(&table_meta, &mut index_arr);
-    write_int_index_table(&table_meta, &mut index_arr);
+pub fn build_index_table(table_meta: &TableMeta) -> Index {
+    if (table_meta.key_type == "Int") {
+        let index_int = build_int_index_table(&table_meta).unwrap();
+        return Index::IndexInt(index_int);
+    } else {
+        let index_string = build_string_index_table(&table_meta).unwrap();
+        return Index::IndexString(index_string);
+    }
 }
 
-#[test]
-pub fn test_read_index() {
-    let table_meta = TableMeta {
-        table_name: String::from("1.in"),
-        key_type: String::from("Int"),
-        key_offet: 0,
-        key_bytes: 4,
-        row_bytes: 4,
+pub fn write_index_table(table_meta: &TableMeta, index_arr: &mut Index) {
+    match index_arr {
+        Index::IndexInt(index_int) => write_int_index_table(&table_meta, &index_int),
+        Index::IndexString(index_string) => write_string_index_table(&table_meta, &index_string),
     };
-    let mut index_arr = IndexInt(vec![]);
-    read_int_index_table(&table_meta, &mut index_arr);
-    write_int_index_table(&table_meta, &mut index_arr);
+}
+
+pub fn read_index_table(table_meta: &TableMeta, index_arr: &mut Index) {
+    match index_arr {
+        Index::IndexInt(index_int) => read_int_index_table(&table_meta, index_int),
+        Index::IndexString(index_string) => read_string_index_table(&table_meta, index_string),
+    };
+}
+
+pub fn insert_index_table(mut insert_value: IndexDataStructure, index_arr: &mut Index) {
+    match index_arr {
+        Index::IndexInt(index_int) => match insert_value {
+            IndexDataStructure::IndexInt(value_int) => insert_int_index_table(value_int, index_int),
+            IndexDataStructure::IndexString(value_string) => println!("do something"),
+        },
+        Index::IndexString(index_string) => match insert_value {
+            IndexDataStructure::IndexInt(value_int) => println!("do something"),
+            IndexDataStructure::IndexString(value_string) => insert_string_index_table(value_string, index_string),
+        },
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    pub fn test_construct_index() {
+        let table_meta = TableMeta {
+            table_name: String::from("1.in"),
+            key_type: String::from("Int"),
+            key_offet: 0,
+            key_bytes: 4,
+            row_bytes: 4,
+        };
+        let mut index_arr = build_index_table(&table_meta);
+        write_index_table(&table_meta, &mut index_arr);
+    }
 }
