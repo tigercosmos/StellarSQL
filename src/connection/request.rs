@@ -5,6 +5,8 @@ use crate::sql::worker::SQL;
 use crate::Response;
 use std::fmt;
 
+use std::sync::{Arc, Mutex};
+
 #[derive(Debug)]
 pub struct Request {}
 
@@ -32,7 +34,7 @@ impl fmt::Display for RequestError {
 }
 
 impl Request {
-    pub fn parse(input: &str, mut sql: &mut SQL) -> Result<Response, RequestError> {
+    pub fn parse(input: &str, mut sql: &mut SQL, mutex: &Arc<Mutex<i32>>) -> Result<Response, RequestError> {
         /*
          * request format
          * case1:
