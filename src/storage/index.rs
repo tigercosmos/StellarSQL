@@ -6,20 +6,26 @@ use std::io::SeekFrom;
 use std::mem;
 
 #[derive(Debug)]
-pub enum IndexErr {
+pub enum IndexError {
+    OpenFileError,
+    CreateFileError,
     BuildIntIndexTableError,
     ReadIntIndexTableError,
     BuildStringIndexTableError,
     ReadStringIndexTableError,
+    WriteIndexError,
 }
 
-impl fmt::Display for IndexErr {
+impl fmt::Display for IndexError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            IndexErr::BuildIntIndexTableError => write!(f, "Build int index table error"),
-            IndexErr::ReadIntIndexTableError => write!(f, "Read int index table error"),
-            IndexErr::BuildStringIndexTableError => write!(f, "Build string index table error"),
-            IndexErr::ReadStringIndexTableError => write!(f, "Read string index table error"),
+            IndexError::OpenFileError => write!(f, "cannot open file"),
+            IndexError::CreateFileError => write!(f, "cannot create file"),
+            IndexError::BuildIntIndexTableError => write!(f, "Build int index table error"),
+            IndexError::ReadIntIndexTableError => write!(f, "Read int index table error"),
+            IndexError::BuildStringIndexTableError => write!(f, "Build string index table error"),
+            IndexError::ReadStringIndexTableError => write!(f, "Read string index table error"),
+            IndexError::WriteIndexError => write!(f, "Write index table error"),
         }
     }
 }
@@ -28,7 +34,7 @@ impl fmt::Display for IndexErr {
 pub struct TableMeta {
     table_name: String, // name of raw table
     key_type: String,   // type of primary key in raw table
-    key_offet: u32,     // byte position of first primary key in raw table
+    key_offset: u32,    // byte position of first primary key in raw table
     key_bytes: u32,     // bytes of primary key in raw table
     row_bytes: u32,     // bytes of each row in raw table
 }
@@ -161,7 +167,7 @@ impl Index {
             if target == 0 {
                 index_arr.insert(target, insert_value);
             } else {
-                index_arr.insert(target - 1, insert_value);
+                index_arr.insert(target, insert_value);
             }
         }
         Ok(())
@@ -320,6 +326,16 @@ mod tests {
             row_bytes: 4,
         };
         let mut index_arr = Index::build_index_table(&table_meta).unwrap();
+        let insert_value = IndexDataStructureInt {
+            row: 100,
+            key_value: 1,
+        };
+        Index::insert_index_table(IndexDataStructure::IndexInt(insert_value), &mut index_arr).unwrap();
+        let insert_value_2 = IndexDataStructureInt {
+            row: 101,
+            key_value: 99999999,
+        };
+        Index::insert_index_table(IndexDataStructure::IndexInt(insert_value_2), &mut index_arr).unwrap();
         Index::write_index_table(&table_meta, &mut index_arr).unwrap();
     }
 }
