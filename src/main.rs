@@ -1,3 +1,6 @@
+//! # StellarSQL
+//! A minimal SQL DBMS written in Rust
+//!
 #[macro_use]
 extern crate clap;
 #[macro_use]
@@ -6,6 +9,8 @@ extern crate dotenv_codegen;
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate log;
 
 mod component;
 mod connection;
@@ -19,11 +24,19 @@ use tokio::io::write_all;
 use crate::connection::message;
 use crate::connection::request::Request;
 use crate::connection::response::Response;
+use crate::sql::worker::SQL;
+use env_logger;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 
+/// The entry of the program
+///
+/// Use `Tokio` to handle each TCP connection and spawn a thread to handle the request.
 fn main() {
-    println!("Hello, StellarSQL!");
+    info!("Hello, StellarSQL!");
+
+    // start logger
+    env_logger::init();
 
     // Parse arguments
     let yml = load_yaml!("../cli.yml");
@@ -47,7 +60,7 @@ fn main() {
         .incoming()
         .for_each(move |socket| {
             let addr = socket.peer_addr().unwrap();
-            println!("New Connection: {}", addr);
+            info!("New Connection: {}", addr);
 
             // Spawn a task to process the connection
             process(socket);
@@ -55,17 +68,22 @@ fn main() {
             Ok(())
         })
         .map_err(|err| {
-            println!("accept error = {:?}", err);
+            error!("accept error = {:?}", err);
         });
 
-    println!("StellarSQL running on {} port", port);
+    info!("StellarSQL running on {} port", port);
     tokio::run(server);
 }
 
+/// Process the TCP socket connection
+///
+/// The request message pass to [`Response`](connection/request/index.html) and get [`Response`](connection/response/index.html)
 fn process(socket: TcpStream) {
     let (reader, writer) = socket.split();
 
     let messages = message::new(BufReader::new(reader));
+
+    let mut sql = SQL::new("").unwrap();
 
     // note the `move` keyword on the closure here which moves ownership
     // of the reference into the closure, which we'll need for spawning the
@@ -75,9 +93,9 @@ fn process(socket: TcpStream) {
     // requests (lines) we receive from the client. The actual handling here
     // is pretty simple, first we parse the request and if it's valid we
     // generate a response.
-    let responses = messages.map(move |message| match Request::parse(&message) {
+    let responses = messages.map(move |message| match Request::parse(&message, &mut sql) {
         Ok(req) => req,
-        Err(e) => return Response::Error { msg: e },
+        Err(e) => return Response::Error { msg: format!("{}", e) },
     });
 
     // At this point `responses` is a stream of `Response` types which we

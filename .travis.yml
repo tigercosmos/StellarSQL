@@ -5,10 +5,25 @@ rust:
 before_script:
   - rustup component add rustfmt-preview
 
+cache:
+  directories:
+    - ./target
+    - $HOME/.cargo/bin
+
 script:
   - cargo fmt --all -- --check
   - cargo build
   - cargo test
+  - cargo rustdoc -- --document-private-items 
+
+deploy:
+  provider: pages
+  skip_cleanup: true
+  github_token: $GH_TOKEN
+  local_dir: target/doc
+  target_branch: gh-pages
+  on:
+    branch: master
 
 notifications:
   email:

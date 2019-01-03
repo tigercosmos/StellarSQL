@@ -13,7 +13,7 @@ pub enum Group {
     DataType,
     Function,
     Keyword,
-    Operator,   // >, >=, =, !=, <, <=
+    Operator,   // >, >=, =, !=, <>, <, <=
     Identifier, // t1, a, b
     Delimiter,  // `,`, (, )
 }
@@ -27,7 +27,6 @@ pub enum Token {
     AlterColumn,
     AlterTable,
     All,
-    And,
     Any,
     As,
     Asc,
@@ -69,22 +68,17 @@ pub enum Token {
     InsertInto,
     IsNull,
     IsNotNull,
-    Join,
     LeftJoin,
     Like,
     Limit,
-    Not,
     NotNull,
-    Or,
     OrderBy,
-    OuterJoin,
+    Percent,
     PrimaryKey,
     Procedure,
     RightJoin,
     Rownum,
     Select,
-    SelectDistinct,
-    SelectTop,
     Set,
     Table,
     Top,
@@ -115,9 +109,12 @@ pub enum Token {
     LT, // <
     LE, // <=
     EQ, // =
-    NE, // !=
+    NE, // !=, <>
     GT, // >
     GE, // >=
+    AND,
+    NOT,
+    OR,
 
     /* Delimiter */
     ParentLeft,  // (
@@ -127,6 +124,9 @@ pub enum Token {
 
     /* Any Identifier */
     Identifier,
+
+    /* Define by StellarSQL */
+    Encrypt,
 }
 
 pub fn sym(name: &str, token: Token, group: Group) -> Symbol {
@@ -151,7 +151,6 @@ lazy_static! {
         m.insert("alter column", sym("alter column", Token::AlterColumn, Group::Keyword));
         m.insert("alter table", sym("alter table", Token::AlterTable, Group::Keyword));
         m.insert("all", sym("all", Token::All, Group::Keyword));
-        m.insert("and", sym("and", Token::And, Group::Keyword));
         m.insert("any", sym("any", Token::Any, Group::Keyword));
         m.insert("as", sym("as", Token::As, Group::Keyword));
         m.insert("asc", sym("asc", Token::Asc, Group::Keyword));
@@ -193,22 +192,17 @@ lazy_static! {
         m.insert("insert into", sym("insert into", Token::InsertInto, Group::Keyword));
         m.insert("is null", sym("is null", Token::IsNull, Group::Keyword));
         m.insert("is not null", sym("is not null", Token::IsNotNull, Group::Keyword));
-        m.insert("join", sym("join", Token::Join, Group::Keyword));
         m.insert("left join", sym("left join", Token::LeftJoin, Group::Keyword));
         m.insert("like", sym("like", Token::Like, Group::Keyword));
         m.insert("limit", sym("limit", Token::Limit, Group::Keyword));
-        m.insert("not", sym("not", Token::Not, Group::Keyword));
         m.insert("not null", sym("not null", Token::NotNull, Group::Keyword));
-        m.insert("or", sym("or", Token::Or, Group::Keyword));
         m.insert("order by", sym("order by", Token::OrderBy, Group::Keyword));
-        m.insert("outer join", sym("outer join", Token::OuterJoin, Group::Keyword));
+        m.insert("percent", sym("percent", Token::Percent, Group::Keyword));
         m.insert("primary key", sym("primary key", Token::PrimaryKey, Group::Keyword));
         m.insert("procedure", sym("procedure", Token::Procedure, Group::Keyword));
         m.insert("right join", sym("right join", Token::RightJoin, Group::Keyword));
         m.insert("rownum", sym("rownum", Token::Rownum, Group::Keyword));
         m.insert("select", sym("select", Token::Select, Group::Keyword));
-        m.insert("select distinct", sym("select distinct", Token::SelectDistinct, Group::Keyword));
-        m.insert("select top", sym("select top", Token::SelectTop, Group::Keyword));
         m.insert("set", sym("set", Token::Set, Group::Keyword));
         m.insert("table", sym("table", Token::Table, Group::Keyword));
         m.insert("top", sym("top", Token::Top, Group::Keyword));
@@ -240,8 +234,15 @@ lazy_static! {
         m.insert(">=", sym(">=", Token::GE, Group::Operator));
         m.insert("=", sym("=", Token::EQ, Group::Operator));
         m.insert("!=", sym("!=", Token::NE, Group::Operator));
+        m.insert("<>", sym("<>", Token::NE, Group::Operator));
         m.insert("<", sym("<", Token::LT, Group::Operator));
         m.insert("<=", sym("<=", Token::LE, Group::Operator));
+        m.insert("and", sym("and", Token::AND, Group::Operator));
+        m.insert("not", sym("not", Token::NOT, Group::Operator));
+        m.insert("or", sym("or", Token::OR, Group::Operator));
+
+        /* StellarSQL */
+        m.insert("encrypt", sym("encrypt", Token::Encrypt, Group::Keyword));
 
         m //return m
     };
@@ -288,33 +289,38 @@ pub fn check_multi_keywords_front(s: &str) -> Option<Vec<u32>> {
     }
 }
 
-/// Test if `SYMBOLS` initialize.
-#[test]
-fn test_symbols() {
-    let s = SYMBOLS.get("add").unwrap();
-    assert_eq!(s.name, "add");
-    assert_eq!(s.len, 3);
-    assert_eq!(s.token, Token::Add);
-    assert_eq!(s.group, Group::Keyword);
-    let s = SYMBOLS.get(">").unwrap();
-    assert_eq!(s.name, ">");
-    assert_eq!(s.len, 1);
-    assert_eq!(s.token, Token::GT);
-    assert_eq!(s.group, Group::Operator);
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn test_match_delimiter() {
-    let mut chs = "){".chars();
-    let x = chs.next().unwrap();
-    let s = Symbol::match_delimiter(x).unwrap();
-    assert_eq!(s.token, Token::ParentRight);
-    let x = chs.next().unwrap();
-    assert!(Symbol::match_delimiter(x).is_none());
-}
+    /// Test if `SYMBOLS` initialize.
+    #[test]
+    fn test_symbols() {
+        let s = SYMBOLS.get("add").unwrap();
+        assert_eq!(s.name, "add");
+        assert_eq!(s.len, 3);
+        assert_eq!(s.token, Token::Add);
+        assert_eq!(s.group, Group::Keyword);
+        let s = SYMBOLS.get(">").unwrap();
+        assert_eq!(s.name, ">");
+        assert_eq!(s.len, 1);
+        assert_eq!(s.token, Token::GT);
+        assert_eq!(s.group, Group::Operator);
+    }
 
-#[test]
-fn test_check_multi_keywords_front() {
-    assert_eq!(check_multi_keywords_front("alter"), Some(vec![2]));
-    assert!(check_multi_keywords_front("not_match").is_none());
+    #[test]
+    fn test_match_delimiter() {
+        let mut chs = "){".chars();
+        let x = chs.next().unwrap();
+        let s = Symbol::match_delimiter(x).unwrap();
+        assert_eq!(s.token, Token::ParentRight);
+        let x = chs.next().unwrap();
+        assert!(Symbol::match_delimiter(x).is_none());
+    }
+
+    #[test]
+    fn test_check_multi_keywords_front() {
+        assert_eq!(check_multi_keywords_front("alter"), Some(vec![2]));
+        assert!(check_multi_keywords_front("not_match").is_none());
+    }
 }

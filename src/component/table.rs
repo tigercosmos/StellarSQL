@@ -1,6 +1,7 @@
-use crate::component::datatype::DataType;
-use crate::component::field;
 use crate::component::field::Field;
+use crate::storage::file::File;
+use crate::storage::file::FileError;
+use crate::storage::file::TableMeta;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -12,20 +13,22 @@ pub struct Table {
     pub primary_key: Vec<String>,
     pub foreign_key: Vec<String>,
     pub reference_table: Option<String>,
+    pub reference_attr: Option<String>,
 
     /* value */
     pub rows: Vec<Row>,
 
     /* storage */
-    pub page: u64,           // which page of this table
-    pub cursors: (u64, u64), // cursors of range in a page
+    is_data_loaded: bool, // if load the data from storage
+    is_dirty: bool,
+    dirty_cursor: u32, // where is the dirty data beginning
 }
 
 #[derive(Debug, Clone)]
-pub struct Row(HashMap<String, String>);
+pub struct Row(pub HashMap<String, String>);
 
 impl Row {
-    fn new() -> Row {
+    pub fn new() -> Row {
         Row(HashMap::new())
     }
 }
@@ -35,6 +38,7 @@ pub enum TableError {
     InsertFieldNotExisted(String),
     InsertFieldNotNullMismatched(String),
     InsertFieldDefaultMismatched(String),
+    CausedByFile(FileError),
 }
 
 impl fmt::Display for TableError {
@@ -51,6 +55,7 @@ impl fmt::Display for TableError {
                 "Insert Error: {} has no default value. Need to declare the value.",
                 attr_name
             ),
+            TableError::CausedByFile(ref e) => write!(f, "error caused by file: {}", e),
         }
     }
 }
@@ -64,9 +69,33 @@ impl Table {
             primary_key: vec![],
             foreign_key: vec![],
             reference_table: None,
-            page: 0,
-            cursors: (0, 0),
+            reference_attr: None,
+
+            is_data_loaded: false,
+            is_dirty: true,
+            dirty_cursor: 0,
         }
+    }
+
+    /// Load a table with meta data
+    #[allow(dead_code)]
+    pub fn load_meta(username: &str, db_name: &str, table_name: &str) -> Result<Table, TableError> {
+        let meta =
+            File::load_table_meta(username, db_name, table_name, None).map_err(|e| TableError::CausedByFile(e))?;
+        let mut table = Table::new(table_name);
+
+        table.format_meta(meta);
+
+        Ok(table)
+    }
+
+    /// format metadata into table
+    pub fn format_meta(&mut self, meta: TableMeta) {
+        self.fields = meta.attrs;
+        self.primary_key = meta.primary_key;
+        self.foreign_key = meta.foreign_key;
+        self.reference_table = meta.reference_table;
+        self.reference_attr = meta.reference_attr;
     }
 
     pub fn insert_new_field(&mut self, field: Field) {
@@ -114,6 +143,8 @@ impl Table {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::component::datatype::DataType;
+    use crate::component::field;
 
     #[test]
     fn test_insert_row() {
@@ -126,6 +157,7 @@ mod tests {
                 true,                    // not_null is true
                 Some("123".to_string()), // default is 123
                 field::Checker::None,
+                false,
             ),
         );
         table.fields.insert(
@@ -136,6 +168,7 @@ mod tests {
                 true, // not_null is true
                 None, // no default
                 field::Checker::None,
+                false,
             ),
         );
         table.fields.insert(
@@ -146,6 +179,7 @@ mod tests {
                 false, // not null is false
                 None,  // no default
                 field::Checker::None,
+                false,
             ),
         );
 
