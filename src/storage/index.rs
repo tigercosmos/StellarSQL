@@ -326,10 +326,7 @@ mod tests {
             row_bytes: 4,
         };
         let mut index_arr = Index::build_index_table(&table_meta).unwrap();
-        let insert_value = IndexDataStructureInt {
-            row: 100,
-            key_value: 1,
-        };
+        let insert_value = IndexDataStructureInt { row: 100, key_value: 1 };
         Index::insert_index_table(IndexDataStructure::IndexInt(insert_value), &mut index_arr).unwrap();
         let insert_value_2 = IndexDataStructureInt {
             row: 101,
