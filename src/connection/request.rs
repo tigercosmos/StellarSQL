@@ -1,7 +1,6 @@
-use crate::sql::parser::Parser;
-use crate::sql::parser::ParserError;
-use crate::sql::worker::SQLError;
-use crate::sql::worker::SQL;
+use crate::sql::parser::{Parser, ParserError};
+use crate::sql::worker::{SQL, SQLError};
+use crate::manager::pool::{Pool, PoolError};
 use crate::Response;
 use std::fmt;
 
@@ -12,7 +11,7 @@ pub struct Request {}
 
 #[derive(Debug)]
 pub enum RequestError {
-    SQLError(SQLError),
+    PoolError(PoolError),
     CauseByParser(ParserError),
     UserNotExist(String),
     // DBNotExist(String),
@@ -23,7 +22,7 @@ pub enum RequestError {
 impl fmt::Display for RequestError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            RequestError::SQLError(ref e) => write!(f, "error caused by worker: {}", e),
+            RequestError::PoolError(ref e) => write!(f, "error caused by pool: {}", e),
             RequestError::CauseByParser(ref e) => write!(f, "error caused by parser: {}", e),
             RequestError::UserNotExist(ref s) => write!(f, "user: {} not found", s),
             // RequestError::DBNotExist(ref s) => write!(f, "database: {} not found", s),
@@ -34,7 +33,7 @@ impl fmt::Display for RequestError {
 }
 
 impl Request {
-    pub fn parse(input: &str, mut sql: &mut SQL, mutex: &Arc<Mutex<i32>>) -> Result<Response, RequestError> {
+    pub fn parse(input: &str, mut ssssql: &mut SQL, mutex: &Arc<Mutex<Pool>>, addr: String) -> Result<Response, RequestError> {
         /*
          * request format
          * case1:
@@ -43,6 +42,7 @@ impl Request {
          * username||||create dbname;
          *
          */
+        println!("{}", addr);
         let split_str: Vec<&str> = input.split("||").collect();
         if split_str.len() != 3 {
             return Err(RequestError::BadRequest);
@@ -53,23 +53,16 @@ impl Request {
         let cmd = format!("{};", split_str[2]);
 
         // initialize username
-        if sql.username == "" {
-            if Request::user_verify(username).is_ok() {
-                sql.username = username.to_string();
-            } else {
-                // user not existed
-                return Err(RequestError::UserNotExist(username.to_string()));
-            }
-        }
+        // TODO: where to place user verification ??
 
+        // load sql object from memory pool
+        let mut pool = mutex.lock().unwrap();
+        let mut sql = match pool.get(username, dbname, addr) {
+            Ok(tsql) => tsql,
+            Err(ret) => return Err(RequestError::PoolError(ret)),
+        };
         // check dbname
         if dbname != "" {
-            if sql.database.name == "" {
-                match sql.load_database(dbname) {
-                    Err(ret) => return Err(RequestError::SQLError(ret)),
-                    Ok(_) => {}
-                }
-            }
             let parser = Parser::new(&cmd).unwrap();
             match parser.parse(&mut sql) {
                 Err(ret) => return Err(RequestError::CauseByParser(ret)),
@@ -93,6 +86,7 @@ impl Request {
         //Ok(Response::OK { msg: format!("{}, user:{}",input, sql.username) })
     }
     fn user_verify(name: &str) -> Result<(), ()> {
+        // TODO: auto create new users
         if name == "" {
             return Err(());
         }

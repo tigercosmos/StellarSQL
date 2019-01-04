@@ -26,6 +26,7 @@ use crate::connection::message;
 use crate::connection::request::Request;
 use crate::connection::response::Response;
 use crate::sql::worker::SQL;
+use crate::manager::pool::Pool;
 use env_logger;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
@@ -53,8 +54,11 @@ fn main() {
 
     let addr = format!("127.0.0.1:{}", port).parse().unwrap();
 
+    //let pool_size: &'static i32 = dotenv!("POOL_SIZE").parse().unwrap();
+    //TODO: read pool size from .env
+
     lazy_static! {
-        static ref mutex:Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
+        static ref mutex:Arc<Mutex<Pool>> = Arc::new(Mutex::new(Pool::new(15)));
     }
     // Bind a TCP listener to the socket address.
     // Note that this is the Tokio TcpListener, which is fully async.
@@ -69,7 +73,7 @@ fn main() {
             info!("New Connection: {}", addr);
 
             // Spawn a task to process the connection
-            process(socket, &mutex);
+            process(socket, &mutex, addr);
 
             Ok(())
         })
@@ -84,7 +88,7 @@ fn main() {
 /// Process the TCP socket connection
 ///
 /// The request message pass to [`Response`](connection/request/index.html) and get [`Response`](connection/response/index.html)
-fn process(socket: TcpStream, mutex: &'static Arc<Mutex<i32>>) {
+fn process(socket: TcpStream, mutex: &'static Arc<Mutex<Pool>>, addr: std::net::SocketAddr) {
     let (reader, writer) = socket.split();
 
     let messages = message::new(BufReader::new(reader));
@@ -99,7 +103,7 @@ fn process(socket: TcpStream, mutex: &'static Arc<Mutex<i32>>) {
     // requests (lines) we receive from the client. The actual handling here
     // is pretty simple, first we parse the request and if it's valid we
     // generate a response.
-    let responses = messages.map(move |message| match Request::parse(&message, &mut sql, &mutex) {
+    let responses = messages.map(move |message| match Request::parse(&message, &mut sql, &mutex, addr.to_string().clone()) {
         Ok(req) => req,
         Err(e) => return Response::Error { msg: format!("{}", e) },
     });
@@ -118,7 +122,8 @@ fn process(socket: TcpStream, mutex: &'static Arc<Mutex<i32>>) {
     // that we see.
     let connection = writes.then(move |_| {
         // TODO: write back
-        println!("disconnect");
+        let mut pool = mutex.lock().unwrap();
+        pool.write_back(addr.to_string());
         Ok(())
     });
 

@@ -571,7 +571,7 @@ impl File {
             let mut raw_row = vec!["1".to_string()];
             let attrs = table_meta_target.attrs_order[1..]
                 .iter()
-                .map(|attr| row.0.get(attr).unwrap().clone())
+                .map(|attr| row.data.get(attr).unwrap().clone())
                 .collect::<Vec<String>>();
             raw_row.extend_from_slice(&attrs);
             chunk += &("\n".to_string() + &raw_row.join("\t"));
@@ -629,7 +629,7 @@ impl File {
             let mut new_row = Row::new();
             for i in 1..raw_line.len() {
                 new_row
-                    .0
+                    .data
                     .insert(table_meta_target.attrs_order[i].clone(), raw_line[i].clone());
             }
             rows.push(new_row);
@@ -732,7 +732,7 @@ impl File {
             let mut raw_row = vec!["1".to_string()];
             let attrs = table_meta_target.attrs_order[1..]
                 .iter()
-                .map(|attr| row.0.get(attr).unwrap().clone())
+                .map(|attr| row.data.get(attr).unwrap().clone())
                 .collect::<Vec<String>>();
             raw_row.extend_from_slice(&attrs);
             modified_content.push(raw_row.join("\t"));

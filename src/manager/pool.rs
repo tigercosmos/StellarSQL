@@ -1,5 +1,5 @@
-use crate::sql::worker::SQLError;
-use crate::sql::worker::SQL;
+use crate::sql::worker::{SQL, SQLError};
+use crate::storage::file::{File, FileError};
 use std::fmt;
 
 use std::sync::{Arc, Mutex};
@@ -18,88 +18,127 @@ pub struct Pool {
 #[derive(Debug)]
 pub enum PoolError {
     SQLError(SQLError),
-    EntryNotExist(String),
+    EntryNotExist,
+    FileError(FileError),
 }
 
 impl fmt::Display for PoolError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             PoolError::SQLError(ref e) => write!(f, "error cause by worker: {}", e),
-            PoolError::EntryNotExist(ref s) => write!(f, "user: {} entry is not existed", s),
+            PoolError::EntryNotExist => write!(f, "entry is not existed"),
+            PoolError::FileError(ref e) => write!(f, "error cause by file: {}", e),
         }
     }
 }
-// TODO: mutex
+
 impl Pool {
-    pub fn new(entry_number: usize) -> Result<Pool, PoolError> {
-        Ok(Pool {
+    pub fn new(entry_number: usize) -> Pool {
+        Pool {
             max_entry: entry_number,
             freelist: VecDeque::new(),
             cache: BTreeMap::new(),
-        })
-    }
-    pub fn get(&mut self, username: &str, dbname: &str) -> Result<&SQL, PoolError> {
-        // get username entry from cache, if entry is not existed, load from disk
-        // TODO: validation: check dbname with sql.database.name
-        if !self.cache.contains_key(username) {
-            // if sql is not in cache, load from disk and add the sql object into cache
-            let mut sql = SQL::new(username).unwrap();
-            match sql.load_database(dbname) {
-                Ok(e) => {},
-                Err(ret) => return Err(PoolError::SQLError(ret)),
-            }
-            match self.insert(sql) {
-                Ok(e) => {},
-                Err(ret) => return Err(ret),
-            }
         }
-        // if username entry is not in freelist[0](most recent use), move it to [0]
-        if self.freelist[0] != username {
-            let l = self.freelist.len();
-            for i in 1..l {
-                if self.freelist[i] == username {
-                    self.freelist.remove(i);
-                    let key = username.clone();
-                    self.freelist.push_front(key.to_string());
-                    break;
+    }
+    pub fn get(&mut self, username: &str, dbname: &str, addr: String) -> Result<&mut SQL, PoolError> {
+        // get username entry from cache
+
+        // if entry is not existed, load from disk to cache
+        if !self.cache.contains_key(&addr) {
+            let mut sql = SQL::new(username).unwrap();
+            if dbname != "" {
+                match sql.load_database(dbname) {
+                    Ok(_) => {},
+                    Err(ret) => return Err(PoolError::SQLError(ret)),
                 }
             }
-        }
-        Ok(self.cache.get(username).unwrap())
-    }
-    pub fn insert(&mut self, sql: SQL) -> Result<(), PoolError> {
-        // check cache size, pop and write back Least Recent Use(LRU) entry
-        if self.cache.len() >= self.max_entry {
-            let user = self.freelist.pop_back().unwrap();
-            match self.write_back(&user) {
-                Ok(e) => {},
+            match self.insert(sql, addr.clone()) {
+                Ok(_) => {},
                 Err(ret) => return Err(ret),
             }
         }
-        let user = sql.username.clone();
-        let key = sql.username.clone();
-        self.cache.insert(user, sql);
+        // if username entry is not in the front(most recent use), move it to the front
+        if self.freelist[0] != addr {
+            self.pop_from_freelist(&addr);
+            let key = addr.clone();
+            self.freelist.push_front(key);
+        }
+        Ok(self.cache.get_mut(&addr).unwrap())
+    }
+    pub fn insert(&mut self, sql: SQL, addr: String) -> Result<(), PoolError> {
+        // if current size >= cache max size, pop and write back thr Least Recent Use(LRU) entry
+        if self.cache.len() >= self.max_entry {
+            let pop_addr = self.freelist.pop_back().unwrap();
+            match self.write_back(pop_addr) {
+                Ok(_) => {},
+                Err(ret) => return Err(ret),
+            }
+        }
+        let key = addr.clone();
+        self.cache.insert(addr, sql);
         self.freelist.push_front(key);
         Ok(())
     }
-    pub fn write_back(&mut self, username: &str) -> Result<(), PoolError> {
+    pub fn write_back(&mut self, addr: String) -> Result<(), PoolError> {
         // pop username entry, write this entry back to disk
 
-        // pop from freelist
+        self.pop_from_freelist(&addr);
+
+        let sql = match self.cache.get(&addr) {
+            Some(tsql) => tsql,
+            None => return Err( PoolError::EntryNotExist ),
+        };
+        match Pool::hierarchic_check(sql) {
+            Ok(_) => {},
+            Err(e) => return Err(e),
+        }
+        
+        // remove from cache
+        self.cache.remove(&addr);
+        Ok(())
+    }
+    fn pop_from_freelist(&mut self, addr: &String) {
         let l = self.freelist.len();
         for i in 0..l {
-            if self.freelist[i] == username {
+            if self.freelist[i] == *addr {
                 self.freelist.remove(i);
                 break;
             }
         }
-        let sql = match self.cache.get(username) {
-            Some(tsql) => tsql,
-            None => return Err( PoolError::EntryNotExist(username.to_string()) ),
-        };
-        // write back
-        // remove from cache
-        self.cache.remove(username);
+    }
+    fn hierarchic_check(sql: &SQL) -> Result<(), PoolError>{
+        // 1. check dirty bit of database
+        if sql.database.is_delete {
+            match File::remove_db(&sql.username, &sql.database.name, None) {
+                Ok(_) => return Ok(()),
+                Err(e) => return Err( PoolError::FileError(e) ),
+            }
+        }
+        if sql.database.is_dirty{
+            match File::create_db(&sql.username, &sql.database.name, None) {
+                Ok(_) => {},
+                Err(e) => return Err( PoolError::FileError(e) ),
+            }
+        }    
+        // 2. check dirty bit of tables
+        for (name, table) in sql.database.tables.iter() {
+            if table.is_delete {
+                match File::drop_table(&sql.username, &sql.database.name, &name, None) {
+                    Ok(_) => {},
+                    Err(e) => return Err( PoolError::FileError(e) ),
+                }
+                continue;
+            }
+            if table.is_dirty {
+                match File::create_table(&sql.username, &sql.database.name, &table, None) {
+                    Ok(_) => {},
+                    Err(e) => return Err( PoolError::FileError(e) ),
+                }
+            }
+            if table.is_data_loaded {
+                // TODO: 3. check dirty bit of rows
+            }
+        }
         Ok(())
     }
 }
