@@ -53,11 +53,8 @@ fn main() {
 
     let addr = format!("127.0.0.1:{}", port).parse().unwrap();
 
-    //let pool_size: &'static i32 = dotenv!("POOL_SIZE").parse().unwrap();
-    //TODO: read pool size from .env
-
     lazy_static! {
-        static ref mutex: Arc<Mutex<Pool>> = Arc::new(Mutex::new(Pool::new(15)));
+        static ref mutex: Arc<Mutex<Pool>> = Arc::new(Mutex::new(Pool::new(dotenv!("POOL_SIZE").parse().unwrap())));
     }
     // Bind a TCP listener to the socket address.
     // Note that this is the Tokio TcpListener, which is fully async.

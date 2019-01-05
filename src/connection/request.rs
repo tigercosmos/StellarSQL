@@ -70,7 +70,7 @@ impl Request {
 
         // load sql object from memory pool
         let mut pool = mutex.lock().unwrap();
-        let mut sql = match pool.get(&username.to_string(), &dbname.to_string(), req.addr.clone()) {
+        let mut sql = match pool.get(username, dbname, req.addr.clone()) {
             Ok(tsql) => tsql,
             Err(ret) => return Err(RequestError::PoolError(ret)),
         };

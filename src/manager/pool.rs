@@ -3,7 +3,6 @@ use crate::storage::file::{File, FileError};
 use std::fmt;
 
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::{Arc, Mutex};
 
 /*
  * freelist: [recent use ..... least recent use]
@@ -141,4 +140,28 @@ impl Pool {
         }
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    #[test]
+    fn test_multithread_correctness() {}
+
+    #[test]
+    fn test_pool_LRU_algorithm() {}
+
+    #[test]
+    fn test_db_writeback() {}
+
+    #[test]
+    fn test_table_writeback() {}
+
+    #[test]
+    fn test_create_row_writeback() {}
+
+    #[test]
+    fn test_pool_error() {}
 }

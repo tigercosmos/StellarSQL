@@ -284,7 +284,7 @@ mod tests {
 
         let mut row = Row::new();
         for i in 0..data.len() {
-            row.0.insert(data[i].0.to_string(), data[i].1.to_string());
+            row.data.insert(data[i].0.to_string(), data[i].1.to_string());
         }
 
         let reconstructed_row = BytesCoder::bytes_to_row(
@@ -293,8 +293,8 @@ mod tests {
         )
         .unwrap();
 
-        for (attr, val) in row.0.iter() {
-            assert_eq!(val.clone(), reconstructed_row.0[attr]);
+        for (attr, val) in row.data.iter() {
+            assert_eq!(val.clone(), reconstructed_row.data[attr]);
         }
     }
 }
