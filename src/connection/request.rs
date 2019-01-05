@@ -1,20 +1,23 @@
-use crate::sql::parser::{Parser, ParserError};
-use crate::sql::worker::{SQL, SQLError};
 use crate::manager::pool::{Pool, PoolError};
+use crate::sql::parser::{Parser, ParserError};
+use crate::storage::file::{File, FileError};
 use crate::Response;
 use std::fmt;
 
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
-pub struct Request {}
+pub struct Request {
+    pub username: String,
+    pub addr: String,
+}
 
 #[derive(Debug)]
 pub enum RequestError {
     PoolError(PoolError),
     CauseByParser(ParserError),
+    FileError(FileError),
     UserNotExist(String),
-    // DBNotExist(String),
     CreateDBBeforeCmd,
     BadRequest,
 }
@@ -24,8 +27,8 @@ impl fmt::Display for RequestError {
         match *self {
             RequestError::PoolError(ref e) => write!(f, "error caused by pool: {}", e),
             RequestError::CauseByParser(ref e) => write!(f, "error caused by parser: {}", e),
+            RequestError::FileError(ref e) => write!(f, "error caused by file: {}", e),
             RequestError::UserNotExist(ref s) => write!(f, "user: {} not found", s),
-            // RequestError::DBNotExist(ref s) => write!(f, "database: {} not found", s),
             RequestError::CreateDBBeforeCmd => write!(f, "please create a database before any other commands"),
             RequestError::BadRequest => write!(f, "BadRequest, invalid request format"),
         }
@@ -33,7 +36,13 @@ impl fmt::Display for RequestError {
 }
 
 impl Request {
-    pub fn parse(input: &str, mut ssssql: &mut SQL, mutex: &Arc<Mutex<Pool>>, addr: String) -> Result<Response, RequestError> {
+    pub fn new(new_addr: String) -> Request {
+        Request {
+            username: "".to_string(),
+            addr: new_addr,
+        }
+    }
+    pub fn parse(input: &str, mutex: &Arc<Mutex<Pool>>, req: &mut Request) -> Result<Response, RequestError> {
         /*
          * request format
          * case1:
@@ -42,7 +51,6 @@ impl Request {
          * username||||create dbname;
          *
          */
-        println!("{}", addr);
         let split_str: Vec<&str> = input.split("||").collect();
         if split_str.len() != 3 {
             return Err(RequestError::BadRequest);
@@ -53,11 +61,16 @@ impl Request {
         let cmd = format!("{};", split_str[2]);
 
         // initialize username
-        // TODO: where to place user verification ??
+        if req.username == "" {
+            match Request::user_verify(username) {
+                Ok(()) => req.username = username.to_string(),
+                Err(ret) => return Err(ret),
+            }
+        }
 
         // load sql object from memory pool
         let mut pool = mutex.lock().unwrap();
-        let mut sql = match pool.get(username, dbname, addr) {
+        let mut sql = match pool.get(&username.to_string(), &dbname.to_string(), req.addr.clone()) {
             Ok(tsql) => tsql,
             Err(ret) => return Err(RequestError::PoolError(ret)),
         };
@@ -85,10 +98,21 @@ impl Request {
         })
         //Ok(Response::OK { msg: format!("{}, user:{}",input, sql.username) })
     }
-    fn user_verify(name: &str) -> Result<(), ()> {
-        // TODO: auto create new users
+    fn user_verify(name: &str) -> Result<(), RequestError> {
+        // auto create new users for now
         if name == "" {
-            return Err(());
+            return Err(RequestError::UserNotExist(name.to_string()));
+        } else {
+            let users = match File::get_usernames(None) {
+                Ok(us) => us,
+                Err(ret) => return Err(RequestError::FileError(ret)),
+            };
+            if !users.contains(&name.to_string()) {
+                match File::create_username(name, None) {
+                    Ok(_) => {}
+                    Err(ret) => return Err(RequestError::FileError(ret)),
+                }
+            }
         }
         Ok(())
     }

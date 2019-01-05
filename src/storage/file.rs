@@ -640,7 +640,7 @@ impl File {
             let mut row_bytes = vec![1];
             for attr in table_meta_target.attrs_order[1..].iter() {
                 let attr_bytes =
-                    BytesCoder::to_bytes(&table_meta_target.attrs[attr].datatype, row.0.get(attr).unwrap())?;
+                    BytesCoder::to_bytes(&table_meta_target.attrs[attr].datatype, row.data.get(attr).unwrap())?;
                 row_bytes.extend_from_slice(&attr_bytes);
             }
             chunk_bytes.extend_from_slice(&row_bytes);

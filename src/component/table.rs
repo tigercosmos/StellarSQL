@@ -34,7 +34,7 @@ pub struct Row {
 
 impl Row {
     pub fn new() -> Row {
-        Row{
+        Row {
             data: HashMap::new(),
             is_dirty: true,
             is_delete: false,

@@ -1,9 +1,9 @@
-use crate::sql::worker::{SQL, SQLError};
+use crate::sql::worker::{SQLError, SQL};
 use crate::storage::file::{File, FileError};
 use std::fmt;
 
-use std::sync::{Arc, Mutex};
 use std::collections::{BTreeMap, VecDeque};
+use std::sync::{Arc, Mutex};
 
 /*
  * freelist: [recent use ..... least recent use]
@@ -48,12 +48,12 @@ impl Pool {
             let mut sql = SQL::new(username).unwrap();
             if dbname != "" {
                 match sql.load_database(dbname) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(ret) => return Err(PoolError::SQLError(ret)),
                 }
             }
             match self.insert(sql, addr.clone()) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(ret) => return Err(ret),
             }
         }
@@ -70,7 +70,7 @@ impl Pool {
         if self.cache.len() >= self.max_entry {
             let pop_addr = self.freelist.pop_back().unwrap();
             match self.write_back(pop_addr) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(ret) => return Err(ret),
             }
         }
@@ -86,13 +86,13 @@ impl Pool {
 
         let sql = match self.cache.get(&addr) {
             Some(tsql) => tsql,
-            None => return Err( PoolError::EntryNotExist ),
+            None => return Err(PoolError::EntryNotExist),
         };
         match Pool::hierarchic_check(sql) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => return Err(e),
         }
-        
+
         // remove from cache
         self.cache.remove(&addr);
         Ok(())
@@ -106,33 +106,33 @@ impl Pool {
             }
         }
     }
-    fn hierarchic_check(sql: &SQL) -> Result<(), PoolError>{
+    fn hierarchic_check(sql: &SQL) -> Result<(), PoolError> {
         // 1. check dirty bit of database
         if sql.database.is_delete {
             match File::remove_db(&sql.username, &sql.database.name, None) {
                 Ok(_) => return Ok(()),
-                Err(e) => return Err( PoolError::FileError(e) ),
+                Err(e) => return Err(PoolError::FileError(e)),
             }
         }
-        if sql.database.is_dirty{
+        if sql.database.is_dirty {
             match File::create_db(&sql.username, &sql.database.name, None) {
-                Ok(_) => {},
-                Err(e) => return Err( PoolError::FileError(e) ),
+                Ok(_) => {}
+                Err(e) => return Err(PoolError::FileError(e)),
             }
-        }    
+        }
         // 2. check dirty bit of tables
         for (name, table) in sql.database.tables.iter() {
             if table.is_delete {
                 match File::drop_table(&sql.username, &sql.database.name, &name, None) {
-                    Ok(_) => {},
-                    Err(e) => return Err( PoolError::FileError(e) ),
+                    Ok(_) => {}
+                    Err(e) => return Err(PoolError::FileError(e)),
                 }
                 continue;
             }
             if table.is_dirty {
                 match File::create_table(&sql.username, &sql.database.name, &table, None) {
-                    Ok(_) => {},
-                    Err(e) => return Err( PoolError::FileError(e) ),
+                    Ok(_) => {}
+                    Err(e) => return Err(PoolError::FileError(e)),
                 }
             }
             if table.is_data_loaded {

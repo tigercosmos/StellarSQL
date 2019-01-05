@@ -14,9 +14,9 @@ extern crate log;
 
 mod component;
 mod connection;
+mod manager;
 mod sql;
 mod storage;
-mod manager;
 
 use clap::App;
 use std::io::BufReader;
@@ -25,7 +25,6 @@ use tokio::io::write_all;
 use crate::connection::message;
 use crate::connection::request::Request;
 use crate::connection::response::Response;
-use crate::sql::worker::SQL;
 use crate::manager::pool::Pool;
 use env_logger;
 use tokio::net::{TcpListener, TcpStream};
@@ -58,7 +57,7 @@ fn main() {
     //TODO: read pool size from .env
 
     lazy_static! {
-        static ref mutex:Arc<Mutex<Pool>> = Arc::new(Mutex::new(Pool::new(15)));
+        static ref mutex: Arc<Mutex<Pool>> = Arc::new(Mutex::new(Pool::new(15)));
     }
     // Bind a TCP listener to the socket address.
     // Note that this is the Tokio TcpListener, which is fully async.
@@ -93,7 +92,7 @@ fn process(socket: TcpStream, mutex: &'static Arc<Mutex<Pool>>, addr: std::net::
 
     let messages = message::new(BufReader::new(reader));
 
-    let mut sql = SQL::new("").unwrap();
+    let mut requests = Request::new(addr.to_string());
 
     // note the `move` keyword on the closure here which moves ownership
     // of the reference into the closure, which we'll need for spawning the
@@ -103,7 +102,7 @@ fn process(socket: TcpStream, mutex: &'static Arc<Mutex<Pool>>, addr: std::net::
     // requests (lines) we receive from the client. The actual handling here
     // is pretty simple, first we parse the request and if it's valid we
     // generate a response.
-    let responses = messages.map(move |message| match Request::parse(&message, &mut sql, &mutex, addr.to_string().clone()) {
+    let responses = messages.map(move |message| match Request::parse(&message, &mutex, &mut requests) {
         Ok(req) => req,
         Err(e) => return Response::Error { msg: format!("{}", e) },
     });
@@ -121,7 +120,7 @@ fn process(socket: TcpStream, mutex: &'static Arc<Mutex<Pool>>, addr: std::net::
     // runs concurrently with all other clients, for now ignoring any errors
     // that we see.
     let connection = writes.then(move |_| {
-        // TODO: write back
+        // write back
         let mut pool = mutex.lock().unwrap();
         pool.write_back(addr.to_string());
         Ok(())
