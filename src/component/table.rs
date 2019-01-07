@@ -70,6 +70,7 @@ pub enum TableError {
     InsertFieldDefaultMismatched(String),
     SelectFieldNotExisted(String),
     CausedByFile(FileError),
+    KeyNotExist,
 }
 
 impl fmt::Display for TableError {
@@ -88,6 +89,7 @@ impl fmt::Display for TableError {
             ),
             TableError::SelectFieldNotExisted(ref name) => write!(f, "Selected field not exists: {}", name),
             TableError::CausedByFile(ref e) => write!(f, "error caused by file: {}", e),
+            TableError::KeyNotExist => write!(f, "encrypt error: public key is not existed"),
         }
     }
 }
@@ -156,7 +158,7 @@ impl Table {
 
     /// `insert` row into the table
     /// `key` and `value` are `&str`, and will be formated to the right type.
-    pub fn insert_row(&mut self, row: Vec<(&str, &str)>) -> Result<(), TableError> {
+    pub fn insert_row(&mut self, row: Vec<(&str, &str)>, public_key: Option<i32>) -> Result<(), TableError> {
         let mut new_row = Row::new();
 
         // insert data into row
@@ -184,6 +186,21 @@ impl Table {
                     };
                 }
             };
+        }
+
+        for (key, field) in self.fields.iter() {
+            if field.encrypt {
+                let pkey = match public_key {
+                    Some(_key) => _key,
+                    None => return Err(TableError::KeyNotExist),
+                };
+                if pkey == 0 {
+                    // 0 is default key value, which is not a valid key either
+                    return Err(TableError::KeyNotExist);
+                }
+                let value = new_row.data.get_mut(key).unwrap();
+                // TODO: encrypt value with pkey
+            }
         }
 
         self.rows.push(new_row);
@@ -349,23 +366,23 @@ mod tests {
 
         println!("correct data");
         let data = vec![("attr_1", "123"), ("attr_2", "123"), ("attr_3", "123")];
-        assert!(table.insert_row(data).is_ok());
+        assert!(table.insert_row(data, None).is_ok());
 
         println!("`attr_2` is null while its not_null is true");
         let data = vec![("attr_1", "123"), ("attr_2", "null"), ("attr_3", "123")];
-        assert!(table.insert_row(data).is_err());
+        assert!(table.insert_row(data, None).is_err());
 
         println!("`attr_3` is null while its not_null is false");
         let data = vec![("attr_1", "123"), ("attr_2", "123"), ("attr_3", "null")];
-        assert!(table.insert_row(data).is_ok());
+        assert!(table.insert_row(data, None).is_ok());
 
         println!("none given value `attr_2` while its default is None");
         let data = vec![("attr_1", "123"), ("attr_3", "123")];
-        assert!(table.insert_row(data).is_err());
+        assert!(table.insert_row(data, None).is_err());
 
         println!("none given value `attr_1` while it has default");
         let data = vec![("attr_2", "123"), ("attr_3", "123")];
-        assert!(table.insert_row(data).is_ok());
+        assert!(table.insert_row(data, None).is_ok());
 
         println!("fields mismatched");
         let data = vec![
@@ -374,9 +391,9 @@ mod tests {
             ("attr_3", "123"),
             ("attr_4", "123"),
         ];
-        assert!(table.insert_row(data).is_err());
+        assert!(table.insert_row(data, None).is_err());
         let data = vec![("attr_1", "123")];
-        assert!(table.insert_row(data).is_err());
+        assert!(table.insert_row(data, None).is_err());
     }
 
     #[test]
@@ -386,13 +403,13 @@ mod tests {
         table.fields.insert("a1".to_string(), Field::new("attr_1", DataType::Int));
         table.fields.insert("a2".to_string(), Field::new("attr_1", DataType::Char(20)));
         let data = vec![("a1", "1"), ("a2", "aaa")];
-        let _ = table.insert_row(data).unwrap();
+        let _ = table.insert_row(data, None).unwrap();
         let data = vec![("a1", "2"), ("a2", "bbb")];
-        let _ = table.insert_row(data).unwrap();
+        let _ = table.insert_row(data, None).unwrap();
         let data = vec![("a1", "3"), ("a2", "aaa")];
-        let _ = table.insert_row(data).unwrap();
+        let _ = table.insert_row(data, None).unwrap();
         let data = vec![("a1", "4"), ("a2", "bbb")];
-        let _ = table.insert_row(data).unwrap();
+        let _ = table.insert_row(data, None).unwrap();
 
         let set = table.operator_filter_rows("a1", ">", "2").unwrap();
         table.set_row_set(set);

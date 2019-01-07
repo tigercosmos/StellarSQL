@@ -65,6 +65,7 @@ impl SQL {
         table_name: &str,
         attrs: Vec<String>,
         rows: Vec<Vec<String>>,
+        public_key: Option<i32>,
     ) -> Result<(), SQLError> {
         let table = self
             .database
@@ -78,7 +79,7 @@ impl SQL {
                 row_in_pair.push((&attrs[i], &row[i]));
             }
             table
-                .insert_row(row_in_pair)
+                .insert_row(row_in_pair, public_key)
                 .map_err(|e| SQLError::SemanticError(format!("{}", e)))?;
         }
 
@@ -296,18 +297,18 @@ mod tests {
         sql.create_database("db11").unwrap();
 
         let query = "create table t1 (a1 int, a2 char(7), a3 double);";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
 
         let query = "insert into t1(a1, a2, a3) values (1, 'aaa', 2.1);";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
         let query = "insert into t1(a1, a2, a3) values (2, 'aaa', 2.2);";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
         let query = "insert into t1(a1, a2, a3) values (3, 'bbb', 2.3);";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
         let query = "insert into t1(a1, a2, a3) values (4, 'bbb', 2.4);";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
         let query = "insert into t1(a1, a2, a3) values (5, 'bbb', 2.5);";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
 
         sql
     }
@@ -317,7 +318,7 @@ mod tests {
         let mut sql = fake_sql();
 
         let query = "select a1, a2, a3 from t1 where a1 > 2 and a3 < 2.5;";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
 
         assert_eq!(
             sql.result_json,
@@ -331,7 +332,7 @@ mod tests {
         let mut sql = fake_sql();
 
         let query = "select a1, a2, a3 from t1 where a1 < 2 or a3 > 2.4;";
-        Parser::new(query).unwrap().parse(&mut sql).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
 
         assert_eq!(
             sql.result_json,
