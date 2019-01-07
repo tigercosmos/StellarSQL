@@ -53,7 +53,7 @@ impl Parser {
             Err(e) => Err(ParserError::CauseByLexer(e)),
         }
     }
-    pub fn parse(&self, sql: &mut SQL, public_key: Option<i32>) -> Result<(), ParserError> {
+    pub fn parse(&self, sql: &mut SQL) -> Result<(), ParserError> {
         debug!("Parser parsing started...");
 
         let mut iter = self.tokens.iter().peekable();
@@ -82,7 +82,7 @@ impl Parser {
                 Token::InsertInto => {
                     debug!("-> insert into table");
                     let (table_name, attrs, rows) = parser_insert_into_table(&mut iter)?;
-                    sql.insert_into_table(&table_name, attrs, rows, public_key)
+                    sql.insert_into_table(&table_name, attrs, rows)
                         .map_err(|e| ParserError::SQLError(e))?;
                     Ok(())
                 }
@@ -595,7 +595,7 @@ mod tests {
 
         let query = "create database db2;";
         let parser = Parser::new(query).unwrap();
-        parser.parse(&mut sql, None).unwrap();
+        parser.parse(&mut sql).unwrap();
         assert_eq!(sql.database.name, "db2");
     }
 
@@ -605,7 +605,7 @@ mod tests {
 
         let query = "create table t1 (a1 int, b1 char(7), c1 double);";
         let parser = Parser::new(query).unwrap();
-        parser.parse(&mut sql, None).unwrap();
+        parser.parse(&mut sql).unwrap();
 
         let db = sql.database.clone();
         let table = db.tables.get("t1").unwrap();
@@ -615,7 +615,7 @@ mod tests {
 
         let query = "create table t1 (a1 int not null default 5 encrypt, b1 char(7) not null, c1 double default 1.2);";
         let parser = Parser::new(query).unwrap();
-        parser.parse(&mut sql, None).unwrap();
+        parser.parse(&mut sql).unwrap();
 
         let db = sql.database.clone();
         let table = db.tables.get("t1").unwrap();
@@ -685,11 +685,11 @@ mod tests {
 
         let query = "create table t1 (a1 int, b1 char(7), c1 double);";
         let parser = Parser::new(query).unwrap();
-        parser.parse(&mut sql, None).unwrap();
+        parser.parse(&mut sql).unwrap();
 
         let query = "insert into t1(a1, b1, c1) values (33, 'abc', 3.43);";
         let parser = Parser::new(query).unwrap();
-        assert!(parser.parse(&mut sql, None).is_ok());
+        assert!(parser.parse(&mut sql).is_ok());
     }
 
     #[test]
@@ -698,12 +698,12 @@ mod tests {
 
         let query = "create table t1 (a1 int, b1 char(7), c1 double);";
         let parser = Parser::new(query).unwrap();
-        parser.parse(&mut sql, None).unwrap();
+        parser.parse(&mut sql).unwrap();
 
         // miss the attribute, but it has no default value
         let query = "insert into t1(a1, c1) values (33,  3.43);";
         let parser = Parser::new(query).unwrap();
-        assert!(parser.parse(&mut sql, None).is_err());
+        assert!(parser.parse(&mut sql).is_err());
     }
 
     #[test]

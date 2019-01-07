@@ -1685,7 +1685,7 @@ mod tests {
             ("AffEmail", "tom@foo.com"),
             ("AffPhoneNum", "+886900000001"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
 
         File::append_rows(
             "crazyguy",
@@ -1716,14 +1716,14 @@ mod tests {
             ("AffEmail", "ben@foo.com"),
             ("AffPhoneNum", "+886900000002"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
         let data = vec![
             ("AffID", "3"),
             ("AffName", "Leo"),
             ("AffEmail", "leo@dee.com"),
             ("AffPhoneNum", "+886900000003"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
 
         File::append_rows(
             "crazyguy",
@@ -1822,7 +1822,7 @@ mod tests {
             ("AffEmail", "john@dee.com"),
             ("AffPhoneNum", "+886900000004"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
 
         let data = vec![
             ("AffID", "5"),
@@ -1830,7 +1830,7 @@ mod tests {
             ("AffEmail", "ray@dee.com"),
             ("AffPhoneNum", "+886900000005"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
 
         let data = vec![
             ("AffID", "6"),
@@ -1838,7 +1838,7 @@ mod tests {
             ("AffEmail", "bryn@dee.com"),
             ("AffPhoneNum", "+886900000006"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
 
         File::append_rows(
             "crazyguy",
@@ -1928,7 +1928,7 @@ mod tests {
             ("AffEmail", "eric@doo.com"),
             ("AffPhoneNum", "+886900000007"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
 
         let data = vec![
             ("AffID", "8"),
@@ -1936,7 +1936,7 @@ mod tests {
             ("AffEmail", "vinc@doo.com"),
             ("AffPhoneNum", "+886900000008"),
         ];
-        aff_table.insert_row(data, None).unwrap();
+        aff_table.insert_row(data).unwrap();
 
         File::append_rows(
             "crazyguy",

@@ -97,10 +97,14 @@ impl Request {
             Ok(tsql) => tsql,
             Err(ret) => return Err(RequestError::PoolError(ret)),
         };
+        // initialize public key
+        if sql.user.key == 0 {
+            sql.user.key = req.key;
+        }
         // check dbname
         if dbname != "" {
             let parser = Parser::new(&cmd).unwrap();
-            match parser.parse(&mut sql, Some(req.key)) {
+            match parser.parse(&mut sql) {
                 Err(ret) => return Err(RequestError::CauseByParser(ret)),
                 Ok(_) => {}
             }
@@ -111,7 +115,7 @@ impl Request {
                 return Err(RequestError::CreateDBBeforeCmd);
             }
             let parser = Parser::new(&cmd).unwrap();
-            match parser.parse(&mut sql, None) {
+            match parser.parse(&mut sql) {
                 Err(ret) => return Err(RequestError::CauseByParser(ret)),
                 Ok(_) => {}
             }

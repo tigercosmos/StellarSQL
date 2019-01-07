@@ -8,10 +8,24 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct SQL {
-    pub username: String,
+    pub user: User,
     pub database: Database,
     pub querydata: QueryData,
     pub result_json: String,
+}
+
+#[derive(Debug)]
+pub struct User {
+    pub name: String,
+    pub key: i32,
+}
+impl User {
+    pub fn new(username: &str) -> User {
+        User {
+            name: username.to_string(),
+            key: 0,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -32,7 +46,7 @@ impl fmt::Display for SQLError {
 impl SQL {
     pub fn new(username: &str) -> Result<SQL, SQLError> {
         Ok(SQL {
-            username: username.to_string(),
+            user: User::new(username),
             database: Database::new(""), // empty db
             querydata: QueryData::new(),
             result_json: "".to_string(),
@@ -47,7 +61,7 @@ impl SQL {
 
     /// Load a database
     pub fn load_database(&mut self, db_name: &str) -> Result<(), SQLError> {
-        self.database = Database::load_db(&self.username, db_name).map_err(|e| SQLError::CauserByDatabase(e))?;
+        self.database = Database::load_db(&self.user.name, db_name).map_err(|e| SQLError::CauserByDatabase(e))?;
         Ok(())
     }
 
@@ -65,13 +79,15 @@ impl SQL {
         table_name: &str,
         attrs: Vec<String>,
         rows: Vec<Vec<String>>,
-        public_key: Option<i32>,
     ) -> Result<(), SQLError> {
         let table = self
             .database
             .tables
             .get_mut(table_name)
             .ok_or(SQLError::SemanticError("table not exists".to_string()))?;
+        if table.public_key == 0 {
+            table.public_key = self.user.key;
+        }
 
         for row in rows {
             let mut row_in_pair: Vec<(&str, &str)> = Vec::new();
@@ -79,7 +95,7 @@ impl SQL {
                 row_in_pair.push((&attrs[i], &row[i]));
             }
             table
-                .insert_row(row_in_pair, public_key)
+                .insert_row(row_in_pair)
                 .map_err(|e| SQLError::SemanticError(format!("{}", e)))?;
         }
 
@@ -180,7 +196,7 @@ impl SQL {
             }
             (false, false) => {
                 // No join. The virtual table is the table.
-                vt1.load_all_rows_data(&self.username, &self.database.name)
+                vt1.load_all_rows_data(&self.user.name, &self.database.name)
                     .map_err(|e| SQLError::SemanticError(format!("{}", e)))?;
                 vt3 = vt1;
             }
@@ -297,18 +313,18 @@ mod tests {
         sql.create_database("db11").unwrap();
 
         let query = "create table t1 (a1 int, a2 char(7), a3 double);";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
 
         let query = "insert into t1(a1, a2, a3) values (1, 'aaa', 2.1);";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
         let query = "insert into t1(a1, a2, a3) values (2, 'aaa', 2.2);";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
         let query = "insert into t1(a1, a2, a3) values (3, 'bbb', 2.3);";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
         let query = "insert into t1(a1, a2, a3) values (4, 'bbb', 2.4);";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
         let query = "insert into t1(a1, a2, a3) values (5, 'bbb', 2.5);";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
 
         sql
     }
@@ -318,7 +334,7 @@ mod tests {
         let mut sql = fake_sql();
 
         let query = "select a1, a2, a3 from t1 where a1 > 2 and a3 < 2.5;";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
 
         assert_eq!(
             sql.result_json,
@@ -332,7 +348,7 @@ mod tests {
         let mut sql = fake_sql();
 
         let query = "select a1, a2, a3 from t1 where a1 < 2 or a3 > 2.4;";
-        Parser::new(query).unwrap().parse(&mut sql, None).unwrap();
+        Parser::new(query).unwrap().parse(&mut sql).unwrap();
 
         assert_eq!(
             sql.result_json,
