@@ -41,11 +41,23 @@ impl Scanner {
     pub fn scan_tokens(&mut self) -> Result<Vec<symbol::Symbol>, LexerError> {
         debug!("Starting scanning message:\n`{}`", self.message);
         let mut chars = self.message.chars();
+        let mut is_quoted = false;
 
         loop {
             match chars.next() {
                 Some(x) => {
-                    if is_identifier_char(x) || is_operator(x) {
+                    if (x == '"') || is_quoted {
+                        self.pos.cursor_r += 1;
+                        if (!is_quoted) {
+                            is_quoted = true;
+                        } else if x == '"' {
+                            let word = self.message.get(self.pos.cursor_l + 1..self.pos.cursor_r - 1).unwrap(); // delete  " "
+                            self.tokens
+                                .push(symbol::sym(word, symbol::Token::Identifier, symbol::Group::Identifier));
+                            is_quoted = false;
+                            self.pos.cursor_l = self.pos.cursor_r;
+                        }
+                    } else if (is_identifier_char(x) || is_operator(x)) {
                         self.pos.cursor_r += 1;
                     } else {
                         match x {
