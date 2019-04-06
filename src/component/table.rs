@@ -352,8 +352,11 @@ fn cmp<T: PartialOrd>(left: T, operator: &str, right: T) -> bool {
 fn is_value_valid(value: &str, datatype: &DataType) -> bool {
     match datatype {
         DataType::Url => {
-            let re = Regex::new(r"^(http|https)?://[\w\-\.]+(:\d+)?(/[~\w/\.]*)?(\?\S*)?(#\S*)?").unwrap();
-            re.is_match(value)
+            let re = Regex::new(r"://[\w\-\.]+(:\d+)?(/[~\w/\.]*)?(\?\S*)?(#\S*)?").unwrap(); // url
+            let re_2 =
+                Regex::new(r"^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$")
+                    .unwrap(); //IPv4
+            re.is_match(value) || re_2.is_match(value)
         }
         _ => true, // TODO: check other datatype
     }
@@ -474,6 +477,10 @@ mod tests {
             "attr_1",
             "https://zh.wikipedia.org/wiki/%E6%AD%A3%E5%88%99%E8%A1%A8%E8%BE%BE%E5%BC%8F",
         )];
+        assert!(table.insert_row(data).is_ok());
+        let data = vec![("attr_1", "127.0.0.1")];
+        assert!(table.insert_row(data).is_ok());
+        let data = vec![("attr_1", "ftp://abc:1234@192.168.0.1")];
         assert!(table.insert_row(data).is_ok());
 
         println!("illegal url");
