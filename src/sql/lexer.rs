@@ -44,26 +44,26 @@ impl Scanner {
         debug!("Starting scanning message:\n`{}`", self.message);
         let mut chars = self.message.chars();
         let mut is_quoted = false;
-        let mut quote = None;
+        let mut quote = '\0';
 
         loop {
             match chars.next() {
                 Some(x) => {
                     // first meet " or '
                     if !is_quoted && (x == '"' || x == '\'') {
-                        quote = Some(x.clone());
+                        quote = x.clone();
                     }
-                    if (if let Some(q) = quote { x == q } else { false }) || is_quoted {
+                    if x == quote || is_quoted {
                         self.pos.cursor_r += 1;
                         if (!is_quoted) {
                             is_quoted = true;
-                        } else if (if let Some(q) = quote { x == q } else { false }) {
+                        } else if x == quote {
                             let word = self.message.get(self.pos.cursor_l + 1..self.pos.cursor_r - 1).unwrap(); // delete quotes
                             self.tokens
                                 .push(symbol::sym(word, symbol::Token::Identifier, symbol::Group::Identifier));
                             is_quoted = false;
                             self.pos.cursor_l = self.pos.cursor_r;
-                            quote = None;
+                            quote = '\0';
                         }
                     } else if (is_identifier_char(x) || is_operator(x)) {
                         self.pos.cursor_r += 1;
